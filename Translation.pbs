@@ -2,7 +2,7 @@
 #PBS -P CFP01-CF-060
 #PBS -j oe
 #PBS -k oed
-#PBS -N olmo_train
+#PBS -N llm-latent-translation
 #PBS -M e1583535@u.nus.edu
 #PBS -q auto
 #PBS -m abe
@@ -32,7 +32,13 @@ echo "Running on host: $(hostname)"
 echo "GPU info:"
 nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nounits || echo "No GPU detected"
 
-python Translation.py
+python Translation.py \
+    --input_lang en --target_lang zh \
+    --model_id_or_path /scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step8290-unsharded-hf \
+    --prefix /scratch/e1583535/llm-latent-language/data/langs/ \
+    --out_dir /scratch/e1583535/llm-latent-language/visuals \
+    --k_fewshot 5 \
+    --no_load_in_8bit 
 
 # you can put more commands here
 echo "Done"
