@@ -390,16 +390,19 @@ for _, d in tqdm(list(enumerate(dataset)), desc="Running model"):
     out_token_probs.append(last[:, out_ids].sum(dim=-1))        # [L]
     entropy.append(compute_entropy(last))                       # [L]
 
-    # store final-position latents [L, H]
-    lat_last = latents[:, -1, :].float().detach().cpu().clone()  # [L, H]
-    latents_all.append(lat_last)
+    # store final-position latents [L, H]  (select batch=0, last token)
+    lat_last = latents[:, 0, -1, :].float()                 # [L, H]
+    latents_all.append(lat_last.detach().cpu().clone())     # save CPU copy
 
-    # energy (same as your original)
-    lat_norm = latents[:, -1, :].float()  # [L, H]
+    # energy (FIXED): (V,H) @ (H,L) -> (V,L) -> reduce over V -> [L]
+    lat_norm = lat_last
     lat_norm = lat_norm / (((lat_norm**2).mean(dim=-1, keepdim=True)) ** 0.5)
-    lat_norm = lat_norm / (lat_norm.norm(dim=-1, keepdim=True))
-    norm_val = ((U_normalized.to(lat_norm.device) @ lat_norm.T)**2).mean(dim=0)**0.5  # [L]
+    lat_norm = lat_norm / (lat_norm.norm(dim=-1, keepdim=True) + 1e-12)
+
+    proj = U_normalized.to(lat_norm.device) @ lat_norm.T    # [V, L]
+    norm_val = (proj.pow(2).mean(dim=0)).sqrt()             # [L]
     energy.append((norm_val / avgUU.to(lat_norm.device)).detach().cpu())
+
 
 latent_token_probs = torch.stack(latent_token_probs)  # [N, L]
 out_token_probs = torch.stack(out_token_probs)        # [N, L]
