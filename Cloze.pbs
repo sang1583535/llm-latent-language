@@ -15,7 +15,7 @@ image="/app1/common/singularity-img/hopper/pytorch/pytorch_2.3.0_cuda_12.4_ngc_2
 
 module load singularity
 
-LOG_DIR=./logs/translations
+LOG_DIR=./logs/clozes
 mkdir -p $LOG_DIR
 
 singularity exec -e \
