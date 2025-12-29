@@ -35,11 +35,13 @@ nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nouni
 python cloze_step.py \
   --target_lang zh \
   --data_prefix /scratch/e1583535/llm-latent-language/data/langs \
-  --out_dir /scratch/e1583535/llm-latent-language/visuals \
-  --checkpoints \
-  /scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step2385-unsharded-hf-para-only-7B-10B,/scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step4770-unsharded-hf-para-only-7B-20B,/scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step7155-unsharded-hf-para-only-7B-30,/scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step8290-unsharded-hf-para-only-7B-34.7B \
-  --steps 2385,4770,7155,8290 \
-  --layers 10,20,30 \
+  --out_dir /scratch/e1583535/llm-latent-language/visuals/para-only-7B \
+  --checkpoints "/scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step2385-unsharded-hf-para-only-7B-10B, \
+  /scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step4770-unsharded-hf-para-only-7B-20B, \
+  /scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step7155-unsharded-hf-para-only-7B-30B, \
+  /scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step8290-unsharded-hf-para-only-7B-34.7B" \
+  --steps 10B,20B,30B,34B \
+  --layers 10,20,22,24,26,28,29,30,31,32 \
   --no_load_in_8bit
 
 # you can put more commands here
