@@ -314,7 +314,7 @@ def main():
         ax.legend(loc="upper left")
         fig.tight_layout()
 
-        out_path = os.path.join(save_dir, f"layer_{layer}.pdf")
+        out_path = os.path.join(save_dir, f"layer_{layer}.png")
         plt.savefig(out_path, dpi=300, bbox_inches="tight")
         print(f"Saved: {out_path}")
 
