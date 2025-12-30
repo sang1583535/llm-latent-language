@@ -42,7 +42,6 @@ python cloze_step.py \
   /scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step8290-unsharded-hf-para-only-7B-34.7B" \
   --steps 10B,20B,30B,34.7B \
   --layers 10,20,21,22,23,24,25,26,27,28,29,30,31,32 \
-  --img_ext png \
   --no_load_in_8bit
 
 # you can put more commands here

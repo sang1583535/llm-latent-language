@@ -397,14 +397,14 @@ def main() -> None:
         latent_token_probs,
         entropy,
         "en",
-        color="tab:orange",
+        color="tab:blue",
         tik_step=tik_step,
         do_colorbar=True,
         nums=[0.99, 0.18, 0.025, 0.6],
     )
 
     if target_lang != "en":
-        plot_ci(ax2, out_token_probs, target_lang, color="tab:blue", do_lines=False)
+        plot_ci(ax2, out_token_probs, target_lang, color="tab:orange", do_lines=False)
 
     ax2.set_xlabel("layer")
     ax2.set_ylabel("probability")
@@ -412,7 +412,7 @@ def main() -> None:
     ax2.set_ylim(0, 1)
     ax2.legend(loc="upper left")
 
-    plot1_path = os.path.join(save_dir, f"olmo2_{input_lang}_{target_lang}_probas_ent{suffix}.pdf")
+    plot1_path = os.path.join(save_dir, f"olmo2_{input_lang}_{target_lang}_probas_ent{suffix}.png")
     plt.savefig(plot1_path, dpi=300, bbox_inches="tight")
     print(f"Saved plot to: {plot1_path}")
 
@@ -423,7 +423,7 @@ def main() -> None:
     axE.set_ylabel("energy")
     axE.set_xlim(0, out_token_probs.shape[1] + 1)
 
-    plot2_path = os.path.join(save_dir, f"olmo2_{input_lang}_{target_lang}_energy{suffix}.pdf")
+    plot2_path = os.path.join(save_dir, f"olmo2_{input_lang}_{target_lang}_energy{suffix}.png")
     plt.savefig(plot2_path, dpi=300, bbox_inches="tight")
     print(f"Saved plot to: {plot2_path}")
 

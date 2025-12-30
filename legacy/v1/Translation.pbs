@@ -2,7 +2,7 @@
 #PBS -P CFP01-CF-060
 #PBS -j oe
 #PBS -k oed
-#PBS -N llm-latent-cloze-step
+#PBS -N llm-latent-translation
 #PBS -M e1583535@u.nus.edu
 #PBS -q auto
 #PBS -m abe
@@ -15,7 +15,7 @@ image="/app1/common/singularity-img/hopper/pytorch/pytorch_2.3.0_cuda_12.4_ngc_2
 
 module load singularity
 
-LOG_DIR=./logs/cloze_steps
+LOG_DIR=./logs/translations
 mkdir -p $LOG_DIR
 
 singularity exec -e \
@@ -32,18 +32,13 @@ echo "Running on host: $(hostname)"
 echo "GPU info:"
 nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nounits || echo "No GPU detected"
 
-python cloze_step.py \
-  --target_lang zh \
-  --data_prefix /scratch/e1583535/llm-latent-language/data/langs \
-  --out_dir /scratch/e1583535/llm-latent-language/visuals/para-only-7B \
-  --checkpoints "/scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step2385-unsharded-hf-para-only-7B-10B, \
-  /scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step4770-unsharded-hf-para-only-7B-20B, \
-  /scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step7155-unsharded-hf-para-only-7B-30B, \
-  /scratch/e1583535/llm/nus-olmo/para-only-7B-34B-checkpoints/step8290-unsharded-hf-para-only-7B-34.7B" \
-  --steps 10B,20B,30B,34.7B \
-  --layers 10,20,21,22,23,24,25,26,27,28,29,30,31,32 \
-  --img_ext png \
-  --no_load_in_8bit
+python Translation.py \
+    --input_lang en --target_lang zh \
+    --model_id_or_path /scratch/e1583535/llm/nus-olmo/multilingual-7B_n34.8-26_replay-8.7-checkpoints/step8290-unsharded-hf-multilingual-7B-34.7B \
+    --prefix /scratch/e1583535/llm-latent-language/data/langs/ \
+    --out_dir /scratch/e1583535/llm-latent-language/visuals \
+    --k_fewshot 5 \
+    --no_load_in_8bit 
 
 # you can put more commands here
 echo "Done"

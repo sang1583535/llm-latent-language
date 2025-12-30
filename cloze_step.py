@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import argparse
 import os
-from typing import Optional, List, Dict, Any, Tuple
+import json
+from typing import Optional, List, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -12,34 +15,39 @@ from tqdm import tqdm
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from utils import plot_ci
 
-
+# -----------------------------
+# Reproducibility
+# -----------------------------
 def set_seed(seed: int):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
 
+# -----------------------------
+# OLMo-2 Helper (drop-in replacement for LlamaHelper)
+# -----------------------------
 class Olmo2Helper:
     def __init__(
         self,
-        model_id_or_path: str,
+        dir: str,
         revision: Optional[str] = None,
         load_in_8bit: bool = True,
         dtype: torch.dtype = torch.bfloat16,
     ):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id_or_path, revision=revision, use_fast=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(dir, revision=revision, use_fast=True)
+
         if load_in_8bit:
             self.model = AutoModelForCausalLM.from_pretrained(
-                model_id_or_path, revision=revision, device_map="auto", load_in_8bit=True
+                dir, revision=revision, device_map="auto", load_in_8bit=True
             )
         else:
             self.model = AutoModelForCausalLM.from_pretrained(
-                model_id_or_path, revision=revision, device_map="auto", torch_dtype=dtype
+                dir, revision=revision, device_map="auto", torch_dtype=dtype
             )
+
         self.model.eval()
-        self.lm_head = self.model.get_output_embeddings()
 
         base = getattr(self.model, "model", None) or getattr(self.model, "base_model", None) or self.model
         if hasattr(base, "norm"):
@@ -52,92 +60,110 @@ class Olmo2Helper:
             else:
                 raise AttributeError("Could not find final norm module (model.norm / ln_f / etc.)")
 
+        self.lm_head = self.model.get_output_embeddings()
         self.unemb = nn.Sequential(self.final_norm, self.lm_head)
 
     @torch.no_grad()
     def latents_all_layers(self, prompt: str) -> torch.Tensor:
+        """
+        Return hidden states per layer: [L, T, H] (batch squeezed)
+        """
         inputs = self.tokenizer(prompt, return_tensors="pt")
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
         out = self.model(**inputs, output_hidden_states=True, use_cache=False)
-        hs = out.hidden_states[1:]  # drop embedding output
-        return torch.stack(hs, dim=0)  # [L,B,T,H]
+        hs = out.hidden_states[1:]                # drop embedding output
+        return torch.stack(hs, dim=0)[:, 0, :, :] # [L,T,H]
 
 
-def process_tokens(token_str: str, tokenizer) -> List[int]:
-    ids = tokenizer.encode(str(token_str), add_special_tokens=False)
-    return list(set(ids))
+# -----------------------------
+# Notebook token logic (unchanged)
+# -----------------------------
+def token_prefixes(token_str: str):
+    n = len(token_str)
+    return [token_str[:i] for i in range(1, n + 1)]
+
+def add_spaces(tokens):
+    return ["▁" + t for t in tokens] + tokens
+
+def capitalizations(tokens):
+    return list(set(tokens))
+
+def unicode_prefix_tokid(zh_char="云", tokenizer=None):
+    if tokenizer is None:
+        return None
+    try:
+        start = zh_char.encode().__str__()[2:-1].split("\\x")[1]
+    except Exception:
+        return None
+    start_key = f"<0x{start.upper()}>"
+    vocab = tokenizer.get_vocab()
+    return vocab.get(start_key, None)
+
+def process_tokens(token_str: str, tokenizer, lang: str):
+    token_str = str(token_str)
+    with_prefixes = token_prefixes(token_str)
+    with_spaces = add_spaces(with_prefixes)
+    with_caps = capitalizations(with_spaces)
+
+    vocab = tokenizer.get_vocab()
+    final_tokens = [vocab[tok] for tok in with_caps if tok in vocab]
+
+    if lang in ["zh", "ru"]:
+        tokid = unicode_prefix_tokid(token_str, tokenizer)
+        if tokid is not None:
+            final_tokens.append(tokid)
+
+    return final_tokens
 
 
-def gaussian_ci(mean: np.ndarray, std: np.ndarray, n: int) -> Tuple[np.ndarray, np.ndarray]:
-    if n <= 1:
-        return mean, mean
-    half = 1.96 * (std / np.sqrt(n))
-    return mean - half, mean + half
-
-
-def parse_int_list(s: str) -> List[int]:
-    if s.strip() == "":
-        return []
-    return [int(x.strip()) for x in s.split(",")]
-
-
-def build_cloze_dataset(
+# -----------------------------
+# Dataset construction (same as notebook)
+# -----------------------------
+def build_dataset_gap(
     df: pd.DataFrame,
     target_lang: str,
     tokenizer,
     key: str,
-    n_examples: int,
+    n_skip: int,
     seed: int,
     max_examples: int = 0,
 ) -> List[Dict[str, Any]]:
-    """
-    Reproduces notebook logic:
-      - sample n_examples other masked prompts as demonstrations
-      - query prompt is '<Lang>: "' (open quote) after the colon
-      - out token = word_translation
-      - latent token = word_original (English)
-      - skip overlap if target != en
-    """
-    dataset = []
+    dataset_gap = []
     df = df.reset_index(drop=True)
 
-    for idx in tqdm(range(len(df)), desc="Building cloze dataset"):
+    for idx, row in tqdm(df.iterrows(), total=len(df), desc="Building dataset_gap"):
         rng = np.random.RandomState(seed + idx)
 
-        # pick demonstrations
         indices = np.arange(len(df))
         indices = indices[indices != idx]
-        if len(indices) < n_examples:
+        if len(indices) < n_skip:
             continue
-        ex_ids = rng.choice(indices, size=n_examples, replace=False)
+        idx_examples = rng.choice(indices, n_skip, replace=False)
 
-        prompt = ""
-        for ex_i in ex_ids:
-            prompt += str(df.loc[ex_i, key]) + "\n"
+        prompt_template = ""
+        for ex in idx_examples:
+            prompt_template += f"{df.loc[ex, key]}\n"
 
-        row = df.loc[idx]
-        out_token_str = row["word_translation"]   # target word
-        latent_token_str = row["word_original"]   # english word
+        out_token_str = row["word_translation"]
+        latent_token_str = row["word_original"]
 
-        out_token_id = process_tokens(out_token_str, tokenizer)
-        latent_token_id = process_tokens(latent_token_str, tokenizer)
+        out_token_id = process_tokens(out_token_str, tokenizer, target_lang)
+        latent_token_id = process_tokens(latent_token_str, tokenizer, "en")
 
         if len(out_token_id) == 0 or len(latent_token_id) == 0:
             continue
         if target_lang != "en" and len(set(out_token_id).intersection(set(latent_token_id))) > 0:
             continue
 
-        # build the query prefix like notebook:
-        # if zh uses Chinese colon "：", else ":"
         masked = str(row[key])
         if target_lang == "zh":
-            query_prefix = masked.split("：")[0] + ': "'
+            prompt = masked.split("：")[0] + ': \"'
         else:
-            query_prefix = masked.split(":")[0] + ': "'
+            prompt = masked.split(":")[0] + ': \"'
 
-        dataset.append(
+        dataset_gap.append(
             {
-                "prompt": prompt + query_prefix,
+                "prompt": prompt_template + prompt,
                 "out_token_id": out_token_id,
                 "latent_token_id": latent_token_id,
                 "out_token_str": out_token_str,
@@ -145,34 +171,43 @@ def build_cloze_dataset(
             }
         )
 
-        if max_examples > 0 and len(dataset) >= max_examples:
+        if max_examples > 0 and len(dataset_gap) >= max_examples:
             break
 
-    return dataset
+    return dataset_gap
 
+
+# -----------------------------
+# Main
+# -----------------------------
+def parse_int_list(s: str) -> List[int]:
+    return [int(x.strip()) for x in s.split(",") if x.strip()]
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--target_lang", type=str, default="fr")
-    ap.add_argument("--data_prefix", type=str, required=True, help="Path containing <lang>/clean.csv")
+    ap.add_argument("--target_lang", type=str, required=True)
+    ap.add_argument("--data_prefix", type=str, required=True)
     ap.add_argument("--out_dir", type=str, required=True)
 
     ap.add_argument("--checkpoints", type=str, required=True,
-                    help="Comma-separated list of checkpoint paths (HF format) OR a single HF hub id.")
+                    help="Comma-separated list of HF checkpoint paths or hub ids.")
     ap.add_argument("--steps", type=str, required=True,
-                    help="Comma-separated list of step labels (same length as checkpoints), e.g. 477,4770,8290")
+                    help="Comma-separated list of step labels, same length as checkpoints.")
 
+    ap.add_argument("--layers", type=str, default="10,20,30")
+    ap.add_argument("--key", type=str, default="blank_prompt_translation_masked")
+    ap.add_argument("--n_skip", type=int, default=2)
+    ap.add_argument("--max_examples", type=int, default=0)
+
+    ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--revision", type=str, default=None)
     ap.add_argument("--load_in_8bit", action="store_true")
     ap.add_argument("--no_load_in_8bit", dest="load_in_8bit", action="store_false")
     ap.set_defaults(load_in_8bit=True)
     ap.add_argument("--dtype", type=str, default="bfloat16", choices=["bfloat16", "float16", "float32"])
 
-    ap.add_argument("--layers", type=str, default="10,20,30")
-    ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--n_examples", type=int, default=2, help="Number of demonstration cloze lines (not counting the query).")
-    ap.add_argument("--key", type=str, default="blank_prompt_translation_masked")
-    ap.add_argument("--max_examples", type=int, default=0)
+    ap.add_argument("--img_ext", type=str, default="png", choices=["png", "jpg", "jpeg", "svg"])
+    ap.add_argument("--dpi", type=int, default=300)
 
     args = ap.parse_args()
     set_seed(args.seed)
@@ -180,11 +215,11 @@ def main():
     ckpts = [x.strip() for x in args.checkpoints.split(",") if x.strip()]
     steps = [x.strip() for x in args.steps.split(",") if x.strip()]
     if len(ckpts) != len(steps):
-        raise ValueError(f"--checkpoints and --steps must have same length. Got {len(ckpts)} vs {len(steps)}")
+        raise ValueError("--checkpoints and --steps must have the same length")
 
     layer_list = parse_int_list(args.layers)
-    if len(layer_list) == 0:
-        raise ValueError("--layers must be non-empty, e.g. 10,20,30")
+    if not layer_list:
+        raise ValueError("--layers must be non-empty")
 
     dtype_map = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}
     dtype = dtype_map[args.dtype]
@@ -192,147 +227,118 @@ def main():
     # Load data
     df = pd.read_csv(os.path.join(args.data_prefix, args.target_lang, "clean.csv")).reset_index(drop=True)
 
-    # Load tokenizer from first checkpoint (assume same vocab across steps)
-    tok_helper = Olmo2Helper(
-        model_id_or_path=ckpts[0],
-        revision=args.revision,
-        load_in_8bit=args.load_in_8bit,
-        dtype=dtype,
-    )
-    tokenizer = tok_helper.tokenizer
+    # Build tokenizer from the first checkpoint, then dataset once (close to notebook)
+    helper0 = Olmo2Helper(ckpts[0], revision=args.revision, load_in_8bit=args.load_in_8bit, dtype=dtype)
+    tokenizer = helper0.tokenizer
 
-    # Build dataset once
-    dataset = build_cloze_dataset(
+    dataset_gap = build_dataset_gap(
         df=df,
         target_lang=args.target_lang,
         tokenizer=tokenizer,
         key=args.key,
-        n_examples=args.n_examples,
+        n_skip=args.n_skip,
         seed=args.seed,
         max_examples=args.max_examples,
     )
-    if len(dataset) == 0:
-        raise RuntimeError("Cloze dataset is empty after filtering. Try different target_lang or adjust filtering.")
+    if len(dataset_gap) == 0:
+        raise RuntimeError("dataset_gap is empty after filtering.")
 
-    print(f"Dataset size: {len(dataset)} prompts")
-
-    # Save dataset CSV once
-    run_name = "cloze_steps"
-    save_dir = os.path.join(args.out_dir, run_name, args.target_lang)
+    # Output dir
+    save_dir = os.path.join(args.out_dir, "cloze_steps", args.target_lang)
     os.makedirs(save_dir, exist_ok=True)
-    pd.DataFrame(dataset).to_csv(os.path.join(save_dir, "dataset.csv"), index=False)
+    pd.DataFrame(dataset_gap).to_csv(os.path.join(save_dir, "dataset.csv"), index=False)
 
-    results_en = {layer: [] for layer in layer_list}
-    results_tgt = {layer: [] for layer in layer_list}
-    results_en_std = {layer: [] for layer in layer_list}
-    results_tgt_std = {layer: [] for layer in layer_list}
+    # Store results: for each layer -> list over steps
+    en_means = {layer: [] for layer in layer_list}
+    tgt_means = {layer: [] for layer in layer_list}
+    en_stds = {layer: [] for layer in layer_list}
+    tgt_stds = {layer: [] for layer in layer_list}
 
     # Loop checkpoints
-    for ckpt, step_label in zip(ckpts, steps):
-        print(f"\n=== Running checkpoint: {ckpt} (step {step_label}) ===")
-        olmo = Olmo2Helper(
-            model_id_or_path=ckpt,
-            revision=args.revision,
-            load_in_8bit=args.load_in_8bit,
-            dtype=dtype,
-        )
+    for ckpt, step in zip(ckpts, steps):
+        print(f"\n=== Step {step}: {ckpt} ===")
+        olmo = Olmo2Helper(ckpt, revision=args.revision, load_in_8bit=args.load_in_8bit, dtype=dtype)
         unemb = olmo.unemb
 
-        layer_sums_en = {layer: 0.0 for layer in layer_list}
-        layer_sumsq_en = {layer: 0.0 for layer in layer_list}
-        layer_sums_tgt = {layer: 0.0 for layer in layer_list}
-        layer_sumsq_tgt = {layer: 0.0 for layer in layer_list}
-        n_used = 0
+        # collect per-prompt values for selected layers (stable + simple)
+        per_layer_en = {layer: [] for layer in layer_list}
+        per_layer_tgt = {layer: [] for layer in layer_list}
 
-        for d in tqdm(dataset, desc=f"Running model step={step_label}"):
-            latents = olmo.latents_all_layers(d["prompt"])          # [L,B,T,H]
-            logits = unemb(latents)                                 # [L,B,T,V]
-            probs = logits[:, 0, -1, :].float().softmax(dim=-1)     # [L,V]
+        for d in tqdm(dataset_gap, desc=f"Running step={step}"):
+            latents = olmo.latents_all_layers(d["prompt"])   # [L,T,H]
+            logits = unemb(latents)                          # [L,T,V]
+            last = logits[:, -1, :].float().softmax(dim=-1)  # [L,V]
 
-            latent_ids = torch.tensor(d["latent_token_id"], dtype=torch.long, device=probs.device)
-            out_ids = torch.tensor(d["out_token_id"], dtype=torch.long, device=probs.device)
+            latent_ids = torch.tensor(d["latent_token_id"], dtype=torch.long, device=last.device)
+            out_ids = torch.tensor(d["out_token_id"], dtype=torch.long, device=last.device)
 
-            p_en_all = probs[:, latent_ids].sum(dim=-1)  # [L]
-            p_tgt_all = probs[:, out_ids].sum(dim=-1)    # [L]
+            p_en_all = last[:, latent_ids].sum(dim=-1)   # [L]
+            p_tg_all = last[:, out_ids].sum(dim=-1)      # [L]
 
             for layer in layer_list:
-                if layer < 0 or layer >= p_en_all.shape[0]:
-                    continue
-                pe = float(p_en_all[layer].detach().cpu())
-                pt = float(p_tgt_all[layer].detach().cpu())
-                layer_sums_en[layer] += pe
-                layer_sumsq_en[layer] += pe * pe
-                layer_sums_tgt[layer] += pt
-                layer_sumsq_tgt[layer] += pt * pt
+                if 0 <= layer < p_en_all.shape[0]:
+                    per_layer_en[layer].append(float(p_en_all[layer].detach().cpu()))
+                    per_layer_tgt[layer].append(float(p_tg_all[layer].detach().cpu()))
 
-            n_used += 1
-
+        # aggregate per step
         for layer in layer_list:
-            if n_used <= 1:
-                mean_en, std_en = 0.0, 0.0
-                mean_tgt, std_tgt = 0.0, 0.0
-            else:
-                mean_en = layer_sums_en[layer] / n_used
-                var_en = max(layer_sumsq_en[layer] / n_used - mean_en * mean_en, 0.0)
-                std_en = float(np.sqrt(var_en))
+            arr_en = np.array(per_layer_en[layer], dtype=np.float32)
+            arr_tg = np.array(per_layer_tgt[layer], dtype=np.float32)
 
-                mean_tgt = layer_sums_tgt[layer] / n_used
-                var_tgt = max(layer_sumsq_tgt[layer] / n_used - mean_tgt * mean_tgt, 0.0)
-                std_tgt = float(np.sqrt(var_tgt))
+            en_means[layer].append(float(arr_en.mean()))
+            tgt_means[layer].append(float(arr_tg.mean()))
+            en_stds[layer].append(float(arr_en.std(ddof=1)) if len(arr_en) > 1 else 0.0)
+            tgt_stds[layer].append(float(arr_tg.std(ddof=1)) if len(arr_tg) > 1 else 0.0)
 
-            results_en[layer].append(mean_en)
-            results_en_std[layer].append(std_en)
-            results_tgt[layer].append(mean_tgt)
-            results_tgt_std[layer].append(std_tgt)
-
-    # Plot per layer (x = step)
+    # Plot (one chart per layer): x = step
     x = np.arange(len(steps))
-    x_labels = steps
 
     for layer in layer_list:
-        en_mean = np.array(results_en[layer], dtype=np.float32)
-        en_std = np.array(results_en_std[layer], dtype=np.float32)
-        tg_mean = np.array(results_tgt[layer], dtype=np.float32)
-        tg_std = np.array(results_tgt_std[layer], dtype=np.float32)
-
-        en_lo, en_hi = gaussian_ci(en_mean, en_std, n=len(dataset))
-        tg_lo, tg_hi = gaussian_ci(tg_mean, tg_std, n=len(dataset))
-
         fig, ax = plt.subplots(figsize=(6, 3.5))
-        ax.plot(x, en_mean, marker="o", label="en")
-        ax.fill_between(x, en_lo, en_hi, alpha=0.2)
 
-        ax.plot(x, tg_mean, marker="o", label=args.target_lang)
-        ax.fill_between(x, tg_lo, tg_hi, alpha=0.2)
+        en_m = np.array(en_means[layer], dtype=np.float32)
+        en_s = np.array(en_stds[layer], dtype=np.float32)
+        tg_m = np.array(tgt_means[layer], dtype=np.float32)
+        tg_s = np.array(tgt_stds[layer], dtype=np.float32)
 
-        ax.set_title(f"Cloze: target={args.target_lang} | layer {layer}")
+        # 95% CI over prompts: mean ± 1.96 * std/sqrt(N)
+        n = len(dataset_gap)
+        en_ci = 1.96 * (en_s / np.sqrt(max(n, 1)))
+        tg_ci = 1.96 * (tg_s / np.sqrt(max(n, 1)))
+
+        ax.plot(x, en_m, marker="o", label="en")
+        ax.fill_between(x, en_m - en_ci, en_m + en_ci, alpha=0.2)
+
+        ax.plot(x, tg_m, marker="o", label=args.target_lang)
+        ax.fill_between(x, tg_m - tg_ci, tg_m + tg_ci, alpha=0.2)
+
+        ax.set_title(f"Cloze | target={args.target_lang} | layer {layer}")
         ax.set_xlabel("training step")
         ax.set_ylabel("probability")
         ax.set_xticks(x)
-        ax.set_xticklabels(x_labels, rotation=30, ha="right")
+        ax.set_xticklabels(steps, rotation=30, ha="right")
         ax.set_ylim(0, 1)
         ax.legend(loc="upper left")
         fig.tight_layout()
 
-        out_path = os.path.join(save_dir, f"layer_{layer}.png")
-        plt.savefig(out_path, dpi=300, bbox_inches="tight")
-        print(f"Saved: {out_path}")
+        out_path = os.path.join(save_dir, f"layer_{layer}.{args.img_ext}")
+        plt.savefig(out_path, dpi=args.dpi, bbox_inches="tight")
+        plt.close(fig)
+        print("Saved:", out_path)
 
     # Save raw numbers
-    out_json = os.path.join(save_dir, "summary.json")
     summary = {
         "steps": steps,
         "layers": layer_list,
-        "n_prompts": len(dataset),
-        "en_mean": {str(k): results_en[k] for k in layer_list},
-        "en_std": {str(k): results_en_std[k] for k in layer_list},
-        f"{args.target_lang}_mean": {str(k): results_tgt[k] for k in layer_list},
-        f"{args.target_lang}_std": {str(k): results_tgt_std[k] for k in layer_list},
+        "n_prompts": len(dataset_gap),
+        "en_mean": {str(l): en_means[l] for l in layer_list},
+        "en_std": {str(l): en_stds[l] for l in layer_list},
+        f"{args.target_lang}_mean": {str(l): tgt_means[l] for l in layer_list},
+        f"{args.target_lang}_std": {str(l): tgt_stds[l] for l in layer_list},
     }
-    import json
-    with open(out_json, "w", encoding="utf-8") as f:
+    with open(os.path.join(save_dir, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
-    print(f"Saved summary: {out_json}")
+    print("Saved:", os.path.join(save_dir, "summary.json"))
 
 
 if __name__ == "__main__":
