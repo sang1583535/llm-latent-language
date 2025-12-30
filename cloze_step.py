@@ -113,6 +113,10 @@ def process_tokens(token_str: str, tokenizer, lang: str):
         if tokid is not None:
             final_tokens.append(tokid)
 
+    if len(final_tokens) == 0:
+        ids = tokenizer.encode(token_str, add_special_tokens=False)
+        final_tokens = list(set(ids))
+
     return final_tokens
 
 

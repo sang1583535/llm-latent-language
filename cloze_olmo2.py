@@ -158,6 +158,11 @@ def process_tokens(token_str: str, tokenizer, lang: str):
         if tokid is not None:
             final_tokens.append(tokid)
 
+    # --- OLMo-2-safe fallback (crucial for zh) ---
+    if len(final_tokens) == 0:
+        ids = tokenizer.encode(token_str, add_special_tokens=False)
+        final_tokens = list(set(ids))
+
     return final_tokens
 
 
@@ -276,10 +281,8 @@ def main():
 
         if args.target_lang == "zh":
             prompt = row[key].split("：")[0]+": \""
-            print("zh prompt:", prompt)
         else:
             prompt = row[key].split(":")[0]+": \""
-            print(f"{args.target_lang} prompt:", prompt)
 
         dataset_gap.append(
             {
