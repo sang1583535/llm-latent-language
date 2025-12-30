@@ -325,13 +325,13 @@ def main():
         en_ci = 1.96 * (en_s / np.sqrt(max(n, 1)))
         tg_ci = 1.96 * (tg_s / np.sqrt(max(n, 1)))
 
-        ax.plot(x, en_m, marker="o", label="en")
-        ax.fill_between(x, en_m - en_ci, en_m + en_ci, alpha=0.2)
+        ax.plot(x, en_m, marker="o", label="en", color="orange")
+        ax.fill_between(x, en_m - en_ci, en_m + en_ci, alpha=0.2, color="orange")
 
-        ax.plot(x, tg_m, marker="o", label=args.target_lang)
-        ax.fill_between(x, tg_m - tg_ci, tg_m + tg_ci, alpha=0.2)
+        ax.plot(x, tg_m, marker="o", label=args.target_lang, color="blue")
+        ax.fill_between(x, tg_m - tg_ci, tg_m + tg_ci, alpha=0.2, color="blue")
 
-        ax.set_title(f"Cloze | target={args.target_lang} | layer {layer}")
+        # ax.set_title(f"Cloze | target={args.target_lang} | layer {layer}")
         ax.set_xlabel("training step")
         ax.set_ylabel("probability")
         ax.set_xticks(x)
