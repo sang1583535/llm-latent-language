@@ -1,18 +1,38 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import argparse
-import pandas as pd
+import os
+from typing import Optional, List, Dict, Any
+
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from tqdm import tqdm
-import os
 from matplotlib import pyplot as plt
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+# From the original repo
+from utils import plot_ci, plot_ci_plus_heatmap
 
+
+# -----------------------------
+# Reproducibility
+# -----------------------------
+def set_seed(seed: int):
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+# -----------------------------
+# OLMo-2 Helper (close to LlamaHelper usage)
+# -----------------------------
 class Olmo2Helper:
     """
-    Minimal wrapper to match the original notebook usage:
+    Minimal wrapper to match notebook usage:
       - .tokenizer
       - .model
       - .latents_all_layers(prompt) -> [L, T, H] (batch squeezed)
@@ -22,7 +42,7 @@ class Olmo2Helper:
         self,
         dir: str,
         load_in_8bit: bool = True,
-        revision: str | None = None,
+        revision: Optional[str] = None,
         dtype: torch.dtype = torch.bfloat16,
     ):
         self.dir = dir
@@ -50,87 +70,145 @@ class Olmo2Helper:
         """
         Returns hidden states for every transformer layer:
           shape [L, T, H]
-        (drops embedding output to match original layer indexing)
+        Drops embedding output to match original layer indexing.
         """
         inputs = self.tokenizer(prompt, return_tensors="pt")
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
 
         out = self.model(**inputs, output_hidden_states=True, use_cache=False)
-        hs = out.hidden_states  # (emb, layer1, ..., layerN)
-        hs = hs[1:]             # drop embedding output
-
-        # stack -> [L, B, T, H], then squeeze batch -> [L, T, H]
-        return torch.stack(hs, dim=0)[:, 0, :, :]
+        hs = out.hidden_states[1:]                 # drop embedding output: tuple len = L
+        return torch.stack(hs, dim=0)[:, 0, :, :]  # [L, T, H]
 
 
-def set_seed(seed: int):
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
-
+# -----------------------------
+# Token utilities (Notebook logic + OLMo-2 fallback)
+# -----------------------------
 def token_prefixes(token_str: str):
     n = len(token_str)
-    tokens = [token_str[:i] for i in range(1, n+1)]
-    return tokens 
+    return [token_str[:i] for i in range(1, n + 1)]
 
 def add_spaces(tokens):
-    return ['▁' + t for t in tokens] + tokens
+    return ["▁" + t for t in tokens] + tokens
 
 def capitalizations(tokens):
     return list(set(tokens))
 
-def unicode_prefix_tokid(zh_char = "云", tokenizer=None):
+def unicode_prefix_tokid(zh_char="云", tokenizer=None):
     if tokenizer is None:
         return None
+    try:
+        start = zh_char.encode().__str__()[2:-1].split("\\x")[1]
+    except Exception:
+        return None
+    start_key = f"<0x{start.upper()}>"
+    vocab = tokenizer.get_vocab()
+    return vocab.get(start_key, None)
 
-    start = zh_char.encode().__str__()[2:-1].split('\\x')[1]
-    unicode_format = '<0x%s>'
-    start_key = unicode_format%start.upper()
-    if start_key in tokenizer.get_vocab():
-        return tokenizer.get_vocab()[start_key]
-    return None
+def process_tokens(token_str: str, tokenizer, lang: str) -> List[int]:
+    """
+    Notebook-style vocab matching, PLUS fallback to tokenizer.encode()
+    (needed for OLMo-2, especially for zh).
+    """
+    token_str = str(token_str)
 
-def compute_entropy(probas):
-        return (-probas*torch.log2(probas)).sum(dim=-1)
-
-def process_tokens(token_str: str, tokenizer, lang):
+    vocab = tokenizer.get_vocab()
     with_prefixes = token_prefixes(token_str)
     with_spaces = add_spaces(with_prefixes)
-    with_capitalizations = capitalizations(with_spaces)
-    final_tokens = []
-    for tok in with_capitalizations:
-        if tok in tokenizer.get_vocab():
-            final_tokens.append(tokenizer.get_vocab()[tok])
-    if lang in ['zh', 'ru']:
+    with_caps = capitalizations(with_spaces)
+
+    final_tokens = [vocab[tok] for tok in with_caps if tok in vocab]
+
+    if lang in ["zh", "ru"]:
         tokid = unicode_prefix_tokid(token_str, tokenizer)
         if tokid is not None:
             final_tokens.append(tokid)
+
+    # OLMo-2 fallback (critical for zh)
+    if len(final_tokens) == 0:
+        ids = tokenizer.encode(token_str, add_special_tokens=False)
+        final_tokens = list(set(ids))
+
     return final_tokens
 
-def get_tokens(token_ids, olmo2_helper):
-    id2voc = {id:voc for voc, id in olmo2_helper.tokenizer.get_vocab().items()}
-    return [id2voc[tokid] for tokid in token_ids]
+def compute_entropy(probas: torch.Tensor) -> torch.Tensor:
+    eps = 1e-12
+    return (-probas * torch.log2(probas.clamp_min(eps))).sum(dim=-1)
 
-def unicode_prefix_tokid(zh_char = "云", tokenizer=None):
-    start = zh_char.encode().__str__()[2:-1].split('\\x')[1]
-    unicode_format = '<0x%s>'
-    start_key = unicode_format%start.upper()
-    if start_key in tokenizer.get_vocab():
-        return tokenizer.get_vocab()[start_key]
-    return None
+
+# -----------------------------
+# Few-shot prompt builder (same spirit as notebook)
+# -----------------------------
+lang2name = {"fr": "Français", "de": "Deutsch", "ru": "Русский", "en": "English", "zh": "中文"}
+
+def build_translation_example(
+    df: pd.DataFrame,
+    ind: int,
+    k: int,
+    tokenizer,
+    lang1: str,
+    lang2: str,
+    lang_latent: str = "en",
+    seed: int = 42,
+) -> Optional[Dict[str, Any]]:
+    df = df.reset_index(drop=True)
+    if ind < 0 or ind >= len(df):
+        return None
+
+    temp = df[df.index != ind]
+    # fix random_state for determinism
+    sample_rows = pd.concat([temp.sample(k - 1, random_state=seed + ind), df[df.index == ind]], axis=0)
+
+    prompt = ""
+    in_token_str = out_token_str = latent_token_str = None
+
+    for idx, (_, row) in enumerate(sample_rows.iterrows()):
+        if idx < k - 1:
+            prompt += f'{lang2name[lang1]}: "{row[lang1]}" - {lang2name[lang2]}: "{row[lang2]}"\n'
+        else:
+            prompt += f'{lang2name[lang1]}: "{row[lang1]}" - {lang2name[lang2]}: "'
+            in_token_str = row[lang1]
+            out_token_str = row[lang2]
+            latent_token_str = row[lang_latent]  # English
+
+    if in_token_str is None or out_token_str is None or latent_token_str is None:
+        return None
+
+    out_token_id = process_tokens(out_token_str, tokenizer, lang2)
+    latent_token_id = process_tokens(latent_token_str, tokenizer, "en")
+
+    if len(out_token_id) == 0 or len(latent_token_id) == 0:
+        return None
+
+    # Same filtering as notebook: drop if overlap when target != en
+    if lang2 != "en" and len(set(out_token_id).intersection(set(latent_token_id))) > 0:
+        return None
+
+    return {
+        "prompt": prompt,
+        "out_token_id": out_token_id,
+        "out_token_str": out_token_str,
+        "latent_token_id": latent_token_id,
+        "latent_token_str": latent_token_str,
+        "in_token_str": in_token_str,
+    }
+
+
+def num_tokens(s: str, tokenizer) -> int:
+    return len(tokenizer.encode(str(s), add_special_tokens=False))
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Translation OLMO2 Script")
-    
-    parser.add_argument('--source_lang', type=str, required=True, help='Source language code')
-    parser.add_argument('--target_lang', type=str, required=True, help='Target language code')
-    parser.add_argument('--model', type=str, required=True, help='Path to the model')
+    parser = argparse.ArgumentParser(description="Translation (OLMo-2) - close to Translation.ipynb")
+
+    parser.add_argument("--source_lang", type=str, required=True)
+    parser.add_argument("--target_lang", type=str, required=True)
+    parser.add_argument("--model", type=str, required=True, help="HF hub id or local HF checkpoint path")
     parser.add_argument("--revision", type=str, default=None)
 
-    parser.add_argument('--data_prefix', type=str, required=True, help='Prefix path for data files')
-    parser.add_argument('--out_dir', type=str, required=True, help='Output directory for results')
+    parser.add_argument("--data_prefix", type=str, required=True, help="Path containing <lang>/clean.csv")
+    parser.add_argument("--out_dir", type=str, required=True)
+
+    parser.add_argument("--k_fewshot", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
 
     parser.add_argument("--load_in_8bit", action="store_true")
@@ -138,215 +216,244 @@ def main():
     parser.set_defaults(load_in_8bit=True)
 
     parser.add_argument("--dtype", type=str, default="bfloat16", choices=["bfloat16", "float16", "float32"])
-    parser.add_argument('--img_ext', type=str, default='png', help='Image file extension')
+
+    parser.add_argument("--img_ext", type=str, default="png", choices=["png", "jpg", "jpeg", "svg"])
     parser.add_argument("--dpi", type=int, default=300)
 
-    parser.add_argument("--single_token_only", action="store_true", help="Keep only target strings that are 1 token")
-    parser.add_argument("--multi_token_only", action="store_true", help="Keep only target strings with >1 token")
+    parser.add_argument("--single_token_only", action="store_true")
+    parser.add_argument("--multi_token_only", action="store_true")
+
+    parser.add_argument("--max_examples", type=int, default=0, help="Debug: limit dataset size (0 = no limit)")
 
     args = parser.parse_args()
     set_seed(args.seed)
 
-    single_token_only = args.single_token_only
-    multi_token_only = args.multi_token_only
-
-    input_lang = args.source_lang
-    target_lang = args.target_lang
-
-    out_dir = args.out_dir
-    img_ext = args.img_ext
-    dpi = args.dpi
+    if args.single_token_only and args.multi_token_only:
+        raise ValueError("--single_token_only and --multi_token_only cannot both be True")
 
     dtype_map = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}
     dtype = dtype_map[args.dtype]
 
-    df_src = pd.read_csv(f'{args.data_prefix}{args.source_lang}/clean.csv').reindex()
-    df_tgt = pd.read_csv(f'{args.data_prefix}{args.target_lang}/clean.csv').reindex()
+    input_lang = args.source_lang
+    target_lang = args.target_lang
 
-    olmo2_helper = Olmo2Helper(dir=args.model, load_in_8bit=args.load_in_8bit, revision=args.revision, dtype=dtype)
+    # -----------------------------
+    # Load model + tokenizer
+    # -----------------------------
+    olmo = Olmo2Helper(dir=args.model, load_in_8bit=args.load_in_8bit, revision=args.revision, dtype=dtype)
+    tokenizer = olmo.tokenizer
+    model = olmo.model
 
-    tokenizer = olmo2_helper.tokenizer
-    model = olmo2_helper.model
-
+    # Build unemb = final_norm -> lm_head (like notebook)
     base = getattr(model, "model", None) or getattr(model, "base_model", None) or model
     if hasattr(base, "norm"):
         final_norm = base.norm
     else:
-        # fallback attempts
         for cand in ["final_layer_norm", "final_layernorm", "ln_f"]:
             if hasattr(base, cand):
                 final_norm = getattr(base, cand)
                 break
         else:
-            raise AttributeError("Could not find final norm module on this checkpoint (model.norm / ln_f / etc.)")
+            raise AttributeError("Could not find final norm module (model.norm / ln_f / etc.)")
 
     lm_head = model.get_output_embeddings()
     unemb = nn.Sequential(final_norm, lm_head)
 
-    print(unemb)
+    # -----------------------------
+    # Energy prep (same math as notebook, but with correct shapes)
+    # -----------------------------
+    with torch.no_grad():
+        U = list(unemb[1].parameters())[0].detach().cpu().float()        # [V, H]
+        weights = list(unemb[0].parameters())[0].detach().cpu().float()  # [H]
+        U_weighted = U * weights.unsqueeze(0)
+        U_normalized = U_weighted / ((U_weighted**2).sum(dim=1, keepdim=True)).sqrt()
+        v = U.shape[0]
+        avgUU = (((U_normalized.T @ U_normalized) ** 2).sum() / (v**2)).sqrt()
+        print(f"U {U.shape} | weights {weights.shape} | avgUU={avgUU.item():.6f}")
 
-    U = list(unemb[1].parameters())[0].detach().cpu().float()
-    weights = list(unemb[0].parameters())[0].detach().cpu().float()
-    print(f'U {U.shape} weights {weights.unsqueeze(0).shape}')
-    U_weighted = U.clone() 
-    #U_weighted = U_weighted / ((U_weighted**2).mean(dim=1, keepdim=True))**0.5
-    U_weighted *= weights.unsqueeze(0)
-    U_normalized = U_weighted / ((U_weighted**2).sum(dim=1, keepdim=True))**0.5
-    v = U.shape[0]
-    TT = U_normalized.T @ U_normalized
-    avgUU = (((U_normalized.T @ U_normalized)**2).sum() / v**2)**0.5
-    print(avgUU.item())
-
-    count = 0
-    for idx, word in enumerate(df_tgt['word_translation']):
-        if word in tokenizer.get_vocab() or '▁'+word in tokenizer.get_vocab():
-            count += 1
-            if multi_token_only:
-                df_tgt.drop(idx, inplace=True)
-        elif single_token_only:
-            df_tgt.drop(idx, inplace=True)
-
-    print(f'for {target_lang} {count} of {len(df_tgt)} are single tokens')
+    # -----------------------------
+    # Load data (same join/rename as notebook)
+    # -----------------------------
+    df_src = pd.read_csv(os.path.join(args.data_prefix, input_lang, "clean.csv")).reset_index(drop=True)
+    df_tgt = pd.read_csv(os.path.join(args.data_prefix, target_lang, "clean.csv")).reset_index(drop=True)
 
     if input_lang == target_lang:
-        df_tgt_copy = df_tgt.copy()
-        df_tgt_copy.rename(columns={'word_original': 'en', 
-                                    f'word_translation': target_lang if target_lang != 'en' else 'en_tgt'}, 
-                                    inplace=True)
+        df_merged = df_tgt.copy()
+        df_merged.rename(
+            columns={
+                "word_original": "en",
+                "word_translation": target_lang if target_lang != "en" else "en_tgt",
+            },
+            inplace=True,
+        )
     else:
-        df_tgt_copy = df_tgt.merge(df_src, on=['word_original'], suffixes=(f'_{target_lang}', f'_{input_lang}'))
-        df_tgt_copy.rename(columns={'word_original': 'en', 
-                                    f'word_translation_{target_lang}': target_lang if target_lang != 'en' else 'en_tgt', 
-                                    f'word_translation_{input_lang}': input_lang if input_lang != 'en' else 'en_in'}, 
-                                    inplace=True)
-    # delete all rows where en is contained in de or fr
-    if target_lang != 'en':
-        for i, row in df_tgt_copy.iterrows():
-            if row['en'].lower() in row[target_lang].lower():
-                df_tgt_copy.drop(i, inplace=True)
+        df_merged = df_tgt.merge(df_src, on=["word_original"], suffixes=(f"_{target_lang}", f"_{input_lang}"))
+        df_merged.rename(
+            columns={
+                "word_original": "en",
+                f"word_translation_{target_lang}": target_lang if target_lang != "en" else "en_tgt",
+                f"word_translation_{input_lang}": input_lang if input_lang != "en" else "en_in",
+            },
+            inplace=True,
+        )
 
-    print(f'final length of df_tgt_copy: {len(df_tgt_copy)}')
+    # Delete rows where English appears inside target translation (notebook)
+    if target_lang != "en":
+        drop_idx = []
+        for i, row in df_merged.iterrows():
+            try:
+                if str(row["en"]).lower() in str(row[target_lang]).lower():
+                    drop_idx.append(i)
+            except Exception:
+                pass
+        if drop_idx:
+            df_merged.drop(drop_idx, inplace=True)
 
-    def sample(df, ind, k=5, tokenizer=None, lang1='fr', lang2='de', lang_latent='en'):
-        lang2name = {'fr': 'Français', 'de': 'Deutsch', 'ru': 'Русский', 'en': 'English', 'zh': '中文'}
-        df = df.reset_index(drop=True)
-        temp = df[df.index!=ind]
-        sample = pd.concat([temp.sample(k-1), df[df.index==ind]], axis=0)
-        prompt = ""
-        for idx, (df_idx, row) in enumerate(sample.iterrows()):
-            if idx < k-1:
-                prompt += f'{lang2name[lang1]}: "{row[lang1]}" - {lang2name[lang2]}: "{row[lang2]}"\n'
-            else:
-                prompt += f'{lang2name[lang1]}: "{row[lang1]}" - {lang2name[lang2]}: "'
-                in_token_str = row[lang1]
-                out_token_str = row[lang2]
-                out_token_id = process_tokens(out_token_str, tokenizer, lang2)
-                latent_token_str = row[lang_latent]
-                latent_token_id = process_tokens(latent_token_str, tokenizer, 'en')
-                intersection = set(out_token_id).intersection(set(latent_token_id))
-                if len(out_token_id) == 0 or len(latent_token_id) == 0:
-                    yield None
-                if lang2 != 'en' and len(intersection) > 0:
-                    yield None
-                yield {'prompt': prompt, 
-                    'out_token_id': out_token_id, 
-                    'out_token_str': out_token_str,
-                    'latent_token_id': latent_token_id, 
-                    'latent_token_str': latent_token_str, 
-                    'in_token_str': in_token_str}
+    df_merged = df_merged.reset_index(drop=True)
+    print(f"final length of df_merged: {len(df_merged)}")
 
-    dataset = []
-    for ind in tqdm(range(len(df_tgt_copy))):
-        d = next(sample(df=df_tgt_copy, ind=ind, tokenizer=tokenizer, lang1=input_lang, lang2=target_lang))
+    # Optional token-length filtering (OLMo-2-safe)
+    if args.single_token_only or args.multi_token_only:
+        keep = []
+        for i, w in enumerate(df_merged[target_lang].tolist()):
+            n = num_tokens(w, tokenizer)
+            if args.single_token_only and n == 1:
+                keep.append(i)
+            if args.multi_token_only and n > 1:
+                keep.append(i)
+        df_merged = df_merged.iloc[keep].reset_index(drop=True)
+        print(f"After token-length filtering: {len(df_merged)} rows")
+
+    # -----------------------------
+    # Build dataset
+    # -----------------------------
+    dataset: List[Dict[str, Any]] = []
+    for ind in tqdm(range(len(df_merged)), desc="Building dataset"):
+        d = build_translation_example(
+            df=df_merged,
+            ind=ind,
+            k=args.k_fewshot,
+            tokenizer=tokenizer,
+            lang1=input_lang,
+            lang2=target_lang,
+            lang_latent="en",
+            seed=args.seed,
+        )
         if d is None:
             continue
         dataset.append(d)
+        if args.max_examples > 0 and len(dataset) >= args.max_examples:
+            break
 
-    print(f'final dataset length: {len(dataset)}')
+    print(f"final dataset length: {len(dataset)}")
+    if len(dataset) == 0:
+        raise RuntimeError("Dataset is empty after filtering. Try increasing data, reducing filtering, or adjusting token logic.")
 
-    df = pd.DataFrame(dataset)
-    custom_model = args.model.split('/')[-1]
-    os.makedirs(f'{os.path.join(out_dir, custom_model)}/translation', exist_ok=True)
-    if single_token_only:
-        df.to_csv(f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_dataset_single_token.csv', index=False)
-    elif multi_token_only:
-        df.to_csv(f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_dataset_multi_token.csv', index=False)
-    else:
-        df.to_csv(f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_dataset.csv', index=False)
+    # -----------------------------
+    # Save dataset CSV
+    # -----------------------------
+    run_name = os.path.basename(os.path.normpath(args.model))
+    save_dir = os.path.join(args.out_dir, run_name, "translation")
+    os.makedirs(save_dir, exist_ok=True)
 
-    in_token_probs = []
+    suffix = ""
+    if args.single_token_only:
+        suffix = "_single_token"
+    elif args.multi_token_only:
+        suffix = "_multi_token"
+
+    df_out = pd.DataFrame(dataset)
+    dataset_path = os.path.join(save_dir, f"{input_lang}_{target_lang}_dataset{suffix}.csv")
+    df_out.to_csv(dataset_path, index=False)
+    print("Saved dataset:", dataset_path)
+
+    # -----------------------------
+    # Run analysis (same as notebook)
+    # -----------------------------
     latent_token_probs = []
     out_token_probs = []
     entropy = []
     energy = []
     latents_all = []
 
-    for idx, d in tqdm(enumerate(dataset)):
-        latents = llama.latents_all_layers(d['prompt'])
-        logits = unemb(latents)
-        last = logits[:, -1, :].float().softmax(dim=-1).detach().cpu()
-        latent_token_probs += [last[:, torch.tensor(d['latent_token_id'])].sum(dim=-1)]
-        out_token_probs += [last[:, torch.tensor(d['out_token_id'])].sum(dim=-1)]
-        entropy += [compute_entropy(last)]
-        latents_all += [latents[:, -1, :].float().detach().cpu().clone()]
-        latents_normalized = latents[:, -1, :].float()
-        latents_normalized = latents_normalized / (((latents_normalized**2).mean(dim=-1, keepdim=True))**0.5)
-        latents_normalized /= (latents_normalized.norm(dim=-1, keepdim=True))
-        norm = ((U_normalized @ latents_normalized.T)**2).mean(dim=0)**0.5
-        energy += [norm/avgUU]
+    for d in tqdm(dataset, desc="Running model"):
+        latents = olmo.latents_all_layers(d["prompt"])          # [L,T,H]
+        logits = unemb(latents)                                  # [L,T,V]
+        last = logits[:, -1, :].float().softmax(dim=-1)          # [L,V]
 
-    latent_token_probs = torch.stack(latent_token_probs)
-    out_token_probs = torch.stack(out_token_probs)
-    entropy = torch.stack(entropy)
-    energy = torch.stack(energy)
-    latents = torch.stack(latents_all)
+        latent_ids = torch.tensor(d["latent_token_id"], dtype=torch.long, device=last.device)
+        out_ids = torch.tensor(d["out_token_id"], dtype=torch.long, device=last.device)
 
-    fig, ax, ax2 = plot_ci_plus_heatmap(latent_token_probs, entropy, 'en', color='tab:orange', tik_step=5, do_colorbar=True, #, do_colorbar=(model_size=='70b'),
-    nums=[.99, 0.18, 0.025, 0.6])
-    if target_lang != 'en':
-        plot_ci(ax2, out_token_probs, target_lang, color='tab:blue', do_lines=False)
-    ax2.set_xlabel('layer')
-    ax2.set_ylabel('probability')
-    if model_size == '7b':
-        ax2.set_xlim(0, out_token_probs.shape[1]+1)
-    else:
-        ax2.set_xlim(0, round(out_token_probs.shape[1]/10)*10+1)
+        latent_token_probs.append(last[:, latent_ids].sum(dim=-1).detach().cpu())  # [L]
+        out_token_probs.append(last[:, out_ids].sum(dim=-1).detach().cpu())        # [L]
+        entropy.append(compute_entropy(last).detach().cpu())                       # [L]
+
+        # latents at final position
+        lat_last = latents[:, -1, :].float()                                        # [L,H]
+        latents_all.append(lat_last.detach().cpu().clone())
+
+        # energy (FIXED shape): (V,H) @ (H,L) -> (V,L) -> reduce over V -> [L]
+        lat_norm = lat_last
+        lat_norm = lat_norm / (((lat_norm**2).mean(dim=-1, keepdim=True)).sqrt() + 1e-12)
+        lat_norm = lat_norm / (lat_norm.norm(dim=-1, keepdim=True) + 1e-12)
+
+        proj = U_normalized.to(lat_norm.device) @ lat_norm.T   # [V,L]
+        norm_val = (proj.pow(2).mean(dim=0)).sqrt()            # [L]
+        energy.append((norm_val / avgUU.to(lat_norm.device)).detach().cpu())
+
+    latent_token_probs = torch.stack(latent_token_probs)  # [N,L]
+    out_token_probs = torch.stack(out_token_probs)        # [N,L]
+    entropy = torch.stack(entropy)                        # [N,L]
+    energy = torch.stack(energy)                          # [N,L]
+    latents_tensor = torch.stack(latents_all)             # [N,L,H]
+
+    # -----------------------------
+    # Plot 1: probs + entropy heatmap
+    # -----------------------------
+    tik_step = 5
+    fig, ax, ax2 = plot_ci_plus_heatmap(
+        latent_token_probs,
+        entropy,
+        "en",
+        color="tab:orange",
+        tik_step=tik_step,
+        do_colorbar=True,
+        nums=[0.99, 0.18, 0.025, 0.6],
+    )
+    if target_lang != "en":
+        plot_ci(ax2, out_token_probs, target_lang, color="tab:blue", do_lines=False)
+
+    ax2.set_xlabel("layer")
+    ax2.set_ylabel("probability")
+    ax2.set_xlim(0, out_token_probs.shape[1] + 1)
     ax2.set_ylim(0, 1)
-    # make xticks start from 1
-    # put legend on the top left
-    ax2.legend(loc='upper left')
-    os.makedirs(f'{os.path.join(out_dir, custom_model)}/translation', exist_ok=True)
-    if single_token_only:
-        plt.savefig(f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_probas_ent_single_token.{img_ext}', dpi=dpi, bbox_inches='tight')
-    elif multi_token_only:
-        plt.savefig(f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_probas_ent_multi_token.{img_ext}', dpi=dpi, bbox_inches='tight')
-    else:
-        plt.savefig(f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_probas_ent.{img_ext}', dpi=dpi, bbox_inches='tight')
+    ax2.legend(loc="upper left")
 
-    
-    fig, ax2 = plt.subplots(figsize=(5,3))
-    plot_ci(ax2, energy, 'energy', color='tab:green', do_lines=True, tik_step=5)
-    ax2.set_xlabel('layer')
-    ax2.set_ylabel('energy')
-    if model_size == '7b':
-        ax2.set_xlim(0, out_token_probs.shape[1]+1)
-    else:
-        ax2.set_xlim(0, round(out_token_probs.shape[1]/10)*10+1)
-    os.makedirs(f'{os.path.join(out_dir, custom_model)}/translation', exist_ok=True)
-    if single_token_only:
-        plt.savefig(f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_probas_ent_single_token.{img_ext}', dpi=dpi, bbox_inches='tight')
-    elif multi_token_only:
-        plt.savefig(f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_probas_ent_multi_token.{img_ext}', dpi=dpi, bbox_inches='tight')
-    else:
-        plt.savefig(f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_energy.{img_ext}', dpi=dpi, bbox_inches='tight')
+    plot1 = os.path.join(save_dir, f"{input_lang}_{target_lang}_probas_ent{suffix}.{args.img_ext}")
+    plt.savefig(plot1, dpi=args.dpi, bbox_inches="tight")
+    plt.close(fig)
+    print("Saved:", plot1)
 
-    
-    if single_token_only:
-        torch.save(latents, f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_latents_single_token.pt')
-    elif multi_token_only:
-        torch.save(latents, f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_latents_multi_token.pt')
-    else:
-        torch.save(latents, f'{os.path.join(out_dir, custom_model)}/translation/{input_lang}_{target_lang}_latents.pt')
+    # -----------------------------
+    # Plot 2: energy
+    # -----------------------------
+    fig2, axE = plt.subplots(figsize=(5, 3))
+    plot_ci(axE, energy, "energy", color="tab:green", do_lines=True, tik_step=tik_step)
+    axE.set_xlabel("layer")
+    axE.set_ylabel("energy")
+    axE.set_xlim(0, out_token_probs.shape[1] + 1)
+
+    plot2 = os.path.join(save_dir, f"{input_lang}_{target_lang}_energy{suffix}.{args.img_ext}")
+    plt.savefig(plot2, dpi=args.dpi, bbox_inches="tight")
+    plt.close(fig2)
+    print("Saved:", plot2)
+
+    # -----------------------------
+    # Save latents tensor
+    # -----------------------------
+    lat_path = os.path.join(save_dir, f"{input_lang}_{target_lang}_latents{suffix}.pt")
+    torch.save(latents_tensor, lat_path)
+    print("Saved:", lat_path)
 
 
 if __name__ == "__main__":
