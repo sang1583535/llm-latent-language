@@ -187,6 +187,18 @@ def build_dataset_gap(
 def parse_int_list(s: str) -> List[int]:
     return [int(x.strip()) for x in s.split(",") if x.strip()]
 
+def mean_std_population_clamp(arr: np.ndarray) -> tuple[float, float]:
+    if arr.size == 0:
+        return 0.0, 0.0
+    arr = arr.astype(np.float64)
+    mean = float(arr.mean())
+    mean_sq = float((arr * arr).mean())
+    var = mean_sq - mean * mean
+    if var < 0.0:  # clamp (floating-point noise)
+        var = 0.0
+    std = float(np.sqrt(var))
+    return mean, std
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target_lang", type=str, required=True)
@@ -289,10 +301,13 @@ def main():
             arr_en = np.array(per_layer_en[layer], dtype=np.float32)
             arr_tg = np.array(per_layer_tgt[layer], dtype=np.float32)
 
-            en_means[layer].append(float(arr_en.mean()))
-            tgt_means[layer].append(float(arr_tg.mean()))
-            en_stds[layer].append(float(arr_en.std(ddof=1)) if len(arr_en) > 1 else 0.0)
-            tgt_stds[layer].append(float(arr_tg.std(ddof=1)) if len(arr_tg) > 1 else 0.0)
+            m_en, s_en = mean_std_population_clamp(arr_en)
+            m_tg, s_tg = mean_std_population_clamp(arr_tg)
+
+            en_means[layer].append(m_en)
+            tgt_means[layer].append(m_tg)
+            en_stds[layer].append(s_en)
+            tgt_stds[layer].append(s_tg)
 
     # Plot (one chart per layer): x = step
     x = np.arange(len(steps))
