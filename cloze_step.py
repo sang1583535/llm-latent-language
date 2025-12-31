@@ -13,6 +13,8 @@ import torch.nn as nn
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
+from utils import plot_ci
+
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
@@ -83,7 +85,8 @@ def token_prefixes(token_str: str):
     return [token_str[:i] for i in range(1, n + 1)]
 
 def add_spaces(tokens):
-    return ["▁" + t for t in tokens] + tokens
+    # return ["▁" + t for t in tokens] + tokens
+    return ['Ġ' + t for t in tokens] +  ['▁' + t for t in tokens] + tokens
 
 def capitalizations(tokens):
     return list(set(tokens))
@@ -187,18 +190,6 @@ def build_dataset_gap(
 def parse_int_list(s: str) -> List[int]:
     return [int(x.strip()) for x in s.split(",") if x.strip()]
 
-def mean_std_population_clamp(arr: np.ndarray) -> tuple[float, float]:
-    if arr.size == 0:
-        return 0.0, 0.0
-    arr = arr.astype(np.float64)
-    mean = float(arr.mean())
-    mean_sq = float((arr * arr).mean())
-    var = mean_sq - mean * mean
-    if var < 0.0:  # clamp (floating-point noise)
-        var = 0.0
-    std = float(np.sqrt(var))
-    return mean, std
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target_lang", type=str, required=True)
@@ -270,6 +261,9 @@ def main():
     en_stds = {layer: [] for layer in layer_list}
     tgt_stds = {layer: [] for layer in layer_list}
 
+    per_layer_en_by_step = {layer: [] for layer in layer_list}
+    per_layer_tgt_by_step = {layer: [] for layer in layer_list}
+
     # Loop checkpoints
     for ckpt, step in zip(ckpts, steps):
         print(f"\n=== Step {step}: {ckpt} ===")
@@ -277,8 +271,8 @@ def main():
         unemb = olmo.unemb
 
         # collect per-prompt values for selected layers (stable + simple)
-        per_layer_en = {layer: [] for layer in layer_list}
-        per_layer_tgt = {layer: [] for layer in layer_list}
+        step_vals_en = {layer: [] for layer in layer_list}
+        step_vals_tgt = {layer: [] for layer in layer_list}
 
         for d in tqdm(dataset_gap, desc=f"Running step={step}"):
             latents = olmo.latents_all_layers(d["prompt"])   # [L,T,H]
@@ -293,45 +287,30 @@ def main():
 
             for layer in layer_list:
                 if 0 <= layer < p_en_all.shape[0]:
-                    per_layer_en[layer].append(float(p_en_all[layer].detach().cpu()))
-                    per_layer_tgt[layer].append(float(p_tg_all[layer].detach().cpu()))
+                    step_vals_en[layer].append(float(p_en_all[layer].detach().cpu()))
+                    step_vals_tgt[layer].append(float(p_tg_all[layer].detach().cpu()))
 
         # aggregate per step
         for layer in layer_list:
-            arr_en = np.array(per_layer_en[layer], dtype=np.float32)
-            arr_tg = np.array(per_layer_tgt[layer], dtype=np.float32)
-
-            m_en, s_en = mean_std_population_clamp(arr_en)
-            m_tg, s_tg = mean_std_population_clamp(arr_tg)
-
-            en_means[layer].append(m_en)
-            tgt_means[layer].append(m_tg)
-            en_stds[layer].append(s_en)
-            tgt_stds[layer].append(s_tg)
+            per_layer_en_by_step[layer].append(step_vals_en[layer])     # list length N
+            per_layer_tgt_by_step[layer].append(step_vals_tgt[layer])
 
     # Plot (one chart per layer): x = step
     x = np.arange(len(steps))
 
     for layer in layer_list:
-        fig, ax = plt.subplots(figsize=(6, 3.5))
+        en_mat_np = np.array(per_layer_en_by_step[layer], dtype=np.float32).T
+        tg_mat_np = np.array(per_layer_tgt_by_step[layer], dtype=np.float32).T
 
-        en_m = np.array(en_means[layer], dtype=np.float32)
-        en_s = np.array(en_stds[layer], dtype=np.float32)
-        tg_m = np.array(tgt_means[layer], dtype=np.float32)
-        tg_s = np.array(tgt_stds[layer], dtype=np.float32)
+        en_mat = torch.tensor(en_mat_np, dtype=torch.float32)
+        tg_mat = torch.tensor(tg_mat_np, dtype=torch.float32)
 
-        # 95% CI over prompts: mean ± 1.96 * std/sqrt(N)
-        n = len(dataset_gap)
-        en_ci = 1.96 * (en_s / np.sqrt(max(n, 1)))
-        tg_ci = 1.96 * (tg_s / np.sqrt(max(n, 1)))
+        fig, ax = plt.subplots(figsize=(6.2, 3.6))
 
-        ax.plot(x, en_m, marker="o", label="en", color="orange")
-        ax.fill_between(x, en_m - en_ci, en_m + en_ci, alpha=0.2, color="orange")
+        plot_ci(ax, en_mat, "en", tik_step=1, do_lines=False, color="orange")
+        plot_ci(ax, tg_mat, args.target_lang, tik_step=1, do_lines=False, color="blue")
 
-        ax.plot(x, tg_m, marker="o", label=args.target_lang, color="blue")
-        ax.fill_between(x, tg_m - tg_ci, tg_m + tg_ci, alpha=0.2, color="blue")
-
-        # ax.set_title(f"Cloze | target={args.target_lang} | layer {layer}")
+        ax.set_title(f"Cloze | target={args.target_lang} | layer {layer}")
         ax.set_xlabel("training step")
         ax.set_ylabel("probability")
         ax.set_xticks(x)
