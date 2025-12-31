@@ -12,6 +12,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 from matplotlib import pyplot as plt
+from untils import plot_ci, plot_ci_plus_heatmap
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -164,22 +165,6 @@ def build_translation_example(
         "latent_token_str": latent_token_str,
         "in_token_str": in_token_str,
     }
-
-
-# -----------------------------
-# Stats helper: match original style (population variance w/ clamp)
-# -----------------------------
-def mean_std_population_clamp(arr: np.ndarray) -> tuple[float, float]:
-    if arr.size == 0:
-        return 0.0, 0.0
-    arr = arr.astype(np.float64)
-    mean = float(arr.mean())
-    mean_sq = float((arr * arr).mean())
-    var = mean_sq - mean * mean
-    if var < 0.0:
-        var = 0.0
-    return mean, float(np.sqrt(var))
-
 
 # -----------------------------
 # Main
@@ -341,6 +326,9 @@ def main():
     # -----------------------------
     # Loop checkpoints: compute per-layer per-prompt probs then aggregate
     # -----------------------------
+    per_layer_en_by_step = {layer: [] for layer in layer_list}
+    per_layer_tgt_by_step = {layer: [] for layer in layer_list}
+
     for ckpt, step in zip(ckpts, steps):
         print(f"\n=== Step {step}: {ckpt} ===")
 
@@ -363,8 +351,8 @@ def main():
         unemb = nn.Sequential(final_norm, lm_head)
 
         # collect per-prompt values for the layers we care about
-        per_layer_en = {layer: [] for layer in layer_list}
-        per_layer_tgt = {layer: [] for layer in layer_list}
+        step_vals_en = {layer: [] for layer in layer_list}
+        step_vals_tgt = {layer: [] for layer in layer_list}
 
         for d in tqdm(dataset, desc=f"Running step={step}"):
             latents = olmo.latents_all_layers(d["prompt"])          # [L,T,H]
@@ -379,21 +367,14 @@ def main():
 
             for layer in layer_list:
                 if 0 <= layer < p_en_all.shape[0]:
-                    per_layer_en[layer].append(float(p_en_all[layer].detach().cpu()))
-                    per_layer_tgt[layer].append(float(p_tg_all[layer].detach().cpu()))
+                    step_vals_en[layer].append(float(p_en_all[layer].detach().cpu()))
+                    step_vals_tgt[layer].append(float(p_tg_all[layer].detach().cpu()))
+
 
         # aggregate with population variance + clamp (matches original style)
         for layer in layer_list:
-            arr_en = np.array(per_layer_en[layer], dtype=np.float32)
-            arr_tg = np.array(per_layer_tgt[layer], dtype=np.float32)
-
-            m_en, s_en = mean_std_population_clamp(arr_en)
-            m_tg, s_tg = mean_std_population_clamp(arr_tg)
-
-            en_means[layer].append(m_en)
-            en_stds[layer].append(s_en)
-            tgt_means[layer].append(m_tg)
-            tgt_stds[layer].append(s_tg)
+            per_layer_en_by_step[layer].append(step_vals_en[layer])
+            per_layer_tgt_by_step[layer].append(step_vals_tgt[layer])
 
     # -----------------------------
     # Plot per layer: x=steps, y=mean prob, CI = 1.96*std/sqrt(N)
@@ -402,21 +383,12 @@ def main():
     n = len(dataset)
 
     for layer in layer_list:
-        fig, ax = plt.subplots(figsize=(6.2, 3.6))
+        en_mat = np.array(per_layer_en_by_step[layer], dtype=np.float32).T
+        tg_mat = np.array(per_layer_tgt_by_step[layer], dtype=np.float32).T
 
-        en_m = np.array(en_means[layer], dtype=np.float32)
-        en_s = np.array(en_stds[layer], dtype=np.float32)
-        tg_m = np.array(tgt_means[layer], dtype=np.float32)
-        tg_s = np.array(tgt_stds[layer], dtype=np.float32)
-
-        en_ci = 1.96 * (en_s / np.sqrt(max(n, 1)))
-        tg_ci = 1.96 * (tg_s / np.sqrt(max(n, 1)))
-
-        ax.plot(x, en_m, marker="o", label="en")
-        ax.fill_between(x, en_m - en_ci, en_m + en_ci, alpha=0.2)
-
-        ax.plot(x, tg_m, marker="o", label=target_lang)
-        ax.fill_between(x, tg_m - tg_ci, tg_m + tg_ci, alpha=0.2)
+        fig, ax = plt.subplots(figsize=(6, 3.5))
+        plot_ci(ax, en_mat, "en", tik_step=1, do_lines=False)
+        plot_ci(ax, tg_mat, target_lang, tik_step=1, do_lines=False)
 
         ax.set_title(f"Translation | {input_lang}→{target_lang} | layer {layer}")
         ax.set_xlabel("training step")
