@@ -17,6 +17,8 @@ from utils import plot_ci
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+from collections import Counter
+
 
 # -----------------------------
 # Reproducibility
@@ -183,8 +185,18 @@ def build_dataset_gap(
 
     return dataset_gap
 
+
 def decode_token_ids(tokenizer, ids):
     return [(int(i), tokenizer.convert_ids_to_tokens(int(i))) for i in ids]
+
+
+def top_argmax_summary(argmax_ids: list[int], tokenizer, topk: int = 10):
+    c = Counter(argmax_ids)
+    top = c.most_common(topk)
+    return [
+        {"id": tid, "tok": tokenizer.convert_ids_to_tokens(tid), "count": cnt}
+        for tid, cnt in top
+    ]
 
 # -----------------------------
 # Main
@@ -257,14 +269,9 @@ def main():
     os.makedirs(save_dir, exist_ok=True)
     pd.DataFrame(dataset_gap).to_csv(os.path.join(save_dir, "dataset.csv"), index=False)
 
-    # Store results: for each layer -> list over steps
-    en_means = {layer: [] for layer in layer_list}
-    tgt_means = {layer: [] for layer in layer_list}
-    en_stds = {layer: [] for layer in layer_list}
-    tgt_stds = {layer: [] for layer in layer_list}
-
     per_layer_en_by_step = {layer: [] for layer in layer_list}
     per_layer_tgt_by_step = {layer: [] for layer in layer_list}
+    per_layer_argmax_by_step = {layer: [] for layer in layer_list}  # per step -> list[prompt argmax ids]
 
     # Loop checkpoints
     for ckpt, step in zip(ckpts, steps):
@@ -275,11 +282,13 @@ def main():
         # collect per-prompt values for selected layers (stable + simple)
         step_vals_en = {layer: [] for layer in layer_list}
         step_vals_tgt = {layer: [] for layer in layer_list}
+        step_argmax_ids = {layer: [] for layer in layer_list}
 
         for d in tqdm(dataset_gap, desc=f"Running step={step}"):
             latents = olmo.latents_all_layers(d["prompt"])   # [L,T,H]
             logits = unemb(latents)                          # [L,T,V]
             last = logits[:, -1, :].float().softmax(dim=-1)  # [L,V]
+            argmax_all = last.argmax(dim=-1)
 
             latent_ids = torch.tensor(d["latent_token_id"], dtype=torch.long, device=last.device)
             out_ids = torch.tensor(d["out_token_id"], dtype=torch.long, device=last.device)
@@ -291,14 +300,53 @@ def main():
                 if 0 <= layer < p_en_all.shape[0]:
                     step_vals_en[layer].append(float(p_en_all[layer].detach().cpu()))
                     step_vals_tgt[layer].append(float(p_tg_all[layer].detach().cpu()))
+                    step_argmax_ids[layer].append(int(argmax_all[layer].detach().cpu()))
 
         # aggregate per step
         for layer in layer_list:
             per_layer_en_by_step[layer].append(step_vals_en[layer])     # list length N
             per_layer_tgt_by_step[layer].append(step_vals_tgt[layer])
+            per_layer_argmax_by_step[layer].append(step_argmax_ids[layer])  # [N]
+
+        print(f"\n[Argmax summary] step={step}")
+        argmax_token_data = []
+        for layer in layer_list:
+            ids = step_argmax_ids[layer]
+            if len(ids) == 0:
+                print(f"  layer {layer}: (no data)")
+                continue
+            top5 = top_argmax_summary(ids, tokenizer, topk=5)
+            msg = ", ".join([f"{d['tok']} - (tok_id: {d['id']}) - (count: {d['count']})" for d in top5])
+            print(f"  layer {layer}: {msg}")
+
+            argmax_token_data.append({
+                "layer": layer,
+                "top_tokens": top5,
+            })
+        # Save per-step argmax summary
+        with open(os.path.join(save_dir, f"argmax_summary_step_{step}.json"), "w", encoding="utf-8") as f:
+            json.dump(argmax_token_data, f, indent=2, ensure_ascii=False)
+        print("Saved:", os.path.join(save_dir, f"argmax_summary_step_{step}.json"))
 
     # Plot (one chart per layer): x = step
-    x = np.arange(len(steps))
+    # x = np.arange(len(steps))
+
+    dump = {
+        "steps": steps,
+        "layers": layer_list,
+        "n_prompts": len(dataset_gap),
+        "checkpoints": ckpts,
+        "target_lang": args.target_lang,
+        "per_layer_en_by_step": per_layer_en_by_step,
+        "per_layer_tgt_by_step": per_layer_tgt_by_step,
+        "per_layer_argmax_by_step": per_layer_argmax_by_step,
+    }
+
+    dump_path = os.path.join(save_dir, "raw_dump.json")
+    with open(dump_path, "w", encoding="utf-8") as f:
+        json.dump(dump, f, indent=2, ensure_ascii=False)
+
+    print("Saved:", dump_path)
 
     S = len(steps)
 
@@ -333,10 +381,6 @@ def main():
         "steps": steps,
         "layers": layer_list,
         "n_prompts": len(dataset_gap),
-        "en_mean": {str(l): en_means[l] for l in layer_list},
-        "en_std": {str(l): en_stds[l] for l in layer_list},
-        f"{args.target_lang}_mean": {str(l): tgt_means[l] for l in layer_list},
-        f"{args.target_lang}_std": {str(l): tgt_stds[l] for l in layer_list},
     }
     with open(os.path.join(save_dir, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
