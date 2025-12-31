@@ -183,6 +183,8 @@ def build_dataset_gap(
 
     return dataset_gap
 
+def decode_token_ids(tokenizer, ids):
+    return [(int(i), tokenizer.convert_ids_to_tokens(int(i))) for i in ids]
 
 # -----------------------------
 # Main
@@ -298,6 +300,8 @@ def main():
     # Plot (one chart per layer): x = step
     x = np.arange(len(steps))
 
+    S = len(steps)
+
     for layer in layer_list:
         en_mat_np = np.array(per_layer_en_by_step[layer], dtype=np.float32).T
         tg_mat_np = np.array(per_layer_tgt_by_step[layer], dtype=np.float32).T
@@ -313,9 +317,9 @@ def main():
         ax.set_title(f"Cloze | target={args.target_lang} | layer {layer}")
         ax.set_xlabel("training step")
         ax.set_ylabel("probability")
-        ax.set_xticks(x)
-        ax.set_xticklabels(steps, rotation=30, ha="right")
         ax.set_ylim(0, 1)
+        ax.set_xticks(np.arange(1, S + 1))
+        ax.set_xticklabels(steps, rotation=30, ha="right")
         ax.legend(loc="upper left")
         fig.tight_layout()
 
