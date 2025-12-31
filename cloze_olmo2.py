@@ -1,18 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-Cloze_olmo2.py
-A near-1:1 port of epfl-dlab/llm-latent-language Cloze.ipynb,
-but replacing LlamaHelper with an OLMo-2 HF helper.
-
-Keeps:
-- token_prefixes/add_spaces/capitalizations/unicode_prefix_tokid/process_tokens
-- dataset_gap construction (masked cloze prompts with 2 demos)
-- logit-lens prob extraction across layers
-- entropy + "energy" computations
-"""
-
 import argparse
 import os
 import json
@@ -104,7 +89,8 @@ def token_prefixes(token_str: str):
 
 
 def add_spaces(tokens):
-    return ["▁" + t for t in tokens] + tokens
+    # return ["▁" + t for t in tokens] + tokens
+    return ['Ġ' + t for t in tokens] +  ['▁' + t for t in tokens] + tokens
 
 
 def capitalizations(tokens):
