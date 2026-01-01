@@ -391,7 +391,7 @@ def main():
         plot_ci(ax, tg_mat, target_lang, tik_step=1, do_lines=False)
 
         ax.set_title(f"Translation | {input_lang}→{target_lang} | layer {layer}")
-        ax.set_xlabel("training step")
+        ax.set_xlabel("training tokens")
         ax.set_ylabel("probability")
         ax.set_xticks(x)
         ax.set_xticklabels(steps, rotation=30, ha="right")

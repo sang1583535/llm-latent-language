@@ -363,7 +363,7 @@ def main():
         plot_ci(ax, tg_mat, args.target_lang, tik_step=1, do_lines=False, color="blue")
 
         ax.set_title(f"Cloze | target={args.target_lang} | layer {layer}")
-        ax.set_xlabel("training step")
+        ax.set_xlabel("training tokens")
         ax.set_ylabel("probability")
         ax.set_ylim(0, 1)
         ax.set_xticks(np.arange(1, S + 1))
