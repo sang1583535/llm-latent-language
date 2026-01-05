@@ -1,0 +1,35 @@
+#!/bin/bash
+#PBS -P CFP01-CF-060
+#PBS -j oe
+#PBS -k oed
+#PBS -N llm-latent-cloze-step
+#PBS -M e1583535@u.nus.edu
+#PBS -q auto
+#PBS -m abe
+#PBS -l select=1:ncpus=2
+#PBS -l walltime=96:00:00
+
+cd $PBS_O_WORKDIR;
+
+image="/app1/common/singularity-img/hopper/pytorch/pytorch_2.3.0_cuda_12.4_ngc_24.04.sif"
+
+module load singularity
+
+LOG_DIR=./logs/cloze_steps_draw_overlay
+mkdir -p $LOG_DIR
+
+singularity exec -e \
+--env HF_HOME=/scratch/e1583535/cache \
+--env HF_DATASETS_CACHE=/scratch/e1583535/cache/datasets \
+$image bash << EOF > $LOG_DIR/stdout.$PBS_JOBID.log 2> $LOG_DIR/stderr.$PBS_JOBID.log
+
+python -c "import gc, torch; torch.cuda.empty_cache(); gc.collect()"
+
+source /hpctmp/e1583535/virtualenvs/lm-latent/bin/activate
+
+python draw_overlay.py
+
+# you can put more commands here
+echo "Done"
+
+EOF
