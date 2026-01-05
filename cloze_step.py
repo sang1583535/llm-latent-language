@@ -204,6 +204,14 @@ def top_argmax_summary(argmax_ids: list[int], tokenizer, topk: int = 10):
 def parse_int_list(s: str) -> List[int]:
     return [int(x.strip()) for x in s.split(",") if x.strip()]
 
+def step_to_B(s):
+    s = s.strip()
+    if s.endswith("B"):
+        return float(s[:-1])
+    if s.endswith("M"):
+        return float(s[:-1]) / 1000.0
+    return float(s)
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target_lang", type=str, required=True)
@@ -349,6 +357,7 @@ def main():
     print("Saved:", dump_path)
 
     S = len(steps)
+    x_vals = [step_to_B(s) for s in steps]
 
     for layer in layer_list:
         en_mat_np = np.array(per_layer_en_by_step[layer], dtype=np.float32).T
@@ -359,8 +368,8 @@ def main():
 
         fig, ax = plt.subplots(figsize=(6.2, 3.6))
 
-        plot_ci(ax, en_mat, "en", tik_step=1, do_lines=False, color="orange")
-        plot_ci(ax, tg_mat, args.target_lang, tik_step=1, do_lines=False, color="blue")
+        plot_ci(ax, en_mat, "en", tik_step=1, do_lines=False, x=x_vals, color="orange")
+        plot_ci(ax, tg_mat, args.target_lang, tik_step=1, do_lines=False, x=x_vals, color="blue")
 
         # ax.set_title(f"Cloze | target={args.target_lang} | layer {layer + 1}")
         # ax.set_title(f"Cloze | target={args.target_lang}")
@@ -368,7 +377,8 @@ def main():
         ax.set_xlabel("training tokens")
         ax.set_ylabel("probability")
         ax.set_ylim(0, 0.5)
-        ax.set_xticks(np.arange(1, S + 1))
+        # ax.set_xticks(np.arange(1, S + 1))
+        ax.set_xticks(x_vals)
         ax.set_xticklabels(steps, rotation=30, ha="right")
         ax.legend(loc="upper left")
         fig.tight_layout()

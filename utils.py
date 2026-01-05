@@ -14,6 +14,7 @@ import seaborn as sns
 from scipy.stats import bootstrap
 import numpy as np
 import pandas as pd
+import torch
 
 plt.rcParams.update({
     'font.size': 16
@@ -57,24 +58,31 @@ def process_axis(ax, ylabel_font=13, xlabel_font=13):
     #ax.set_ylabel(ylabel, fontsize=ylabel_font)
     #ax.set_xlabel(xlabel, fontsize=xlabel_font)
 
-def plot_ci(ax, data, label, color='blue', linestyle='-', tik_step=10, method='gaussian', do_lines=True, plt_params=plt_params):
+def plot_ci(ax, data, label, color='blue', linestyle='-', tik_step=10, method='gaussian', do_lines=True, x=None, plt_params=plt_params):
     if do_lines:
         upper = max(round(data.shape[1]/10)*10+1, data.shape[1]+1)
         ax.set_xticks(np.arange(0, upper, tik_step))
         for i in range(0, upper, tik_step):
             ax.axvline(i, color='black', linestyle='--', alpha=0.2, linewidth=1)
+
+    if x is None:
+        x_vals = np.arange(data.shape[1]) + 1
+    else:
+        x_vals = np.asarray(x)
+        assert len(x_vals) == data.shape[1], "x must match number of steps"
+
     if method == 'gaussian':
         mean = data.mean(dim=0)
         std = data.std(dim=0)
         data_ci = {
-            'x' : np.arange(data.shape[1])+1,
+            'x' : x_vals,
             'y' : mean,
             'y_upper' : mean + (1.96/(data.shape[0]**0.5)) * std,
             'y_lower' : mean - (1.96/(data.shape[0]**0.5)) * std,
         }
     elif method == 'np':
         data_ci = {
-            'x' : np.arange(data.shape[1])+1,
+            'x' : x_vals,
             'y' : np.quantile(data, 0.5, axis=0),
             'y_upper' : np.quantile(data, 0.95, axis=0),
             'y_lower' : np.quantile(data, 0.05, axis=0),
@@ -82,7 +90,7 @@ def plot_ci(ax, data, label, color='blue', linestyle='-', tik_step=10, method='g
     elif method == 'bootstrap':
         bootstrap_ci = bootstrap((data,), np.mean, confidence_level=0.95, method='percentile')
         data_ci = {
-            'x' : np.arange(data.shape[1])+1,
+            'x' : x_vals,
             'y' : data.mean(axis=0),
             'y_upper' : bootstrap_ci.confidence_interval.high,
             'y_lower' : bootstrap_ci.confidence_interval.low,
