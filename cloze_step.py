@@ -362,10 +362,12 @@ def main():
         plot_ci(ax, en_mat, "en", tik_step=1, do_lines=False, color="orange")
         plot_ci(ax, tg_mat, args.target_lang, tik_step=1, do_lines=False, color="blue")
 
-        ax.set_title(f"Cloze | target={args.target_lang} | layer {layer}")
+        # ax.set_title(f"Cloze | target={args.target_lang} | layer {layer + 1}")
+        # ax.set_title(f"Cloze | target={args.target_lang}")
+        
         ax.set_xlabel("training tokens")
         ax.set_ylabel("probability")
-        ax.set_ylim(0, 1)
+        ax.set_ylim(0, 0.5)
         ax.set_xticks(np.arange(1, S + 1))
         ax.set_xticklabels(steps, rotation=30, ha="right")
         ax.legend(loc="upper left")
