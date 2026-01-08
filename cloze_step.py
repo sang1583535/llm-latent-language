@@ -374,8 +374,8 @@ def main():
         # ax.set_title(f"Cloze | target={args.target_lang} | layer {layer + 1}")
         # ax.set_title(f"Cloze | target={args.target_lang}")
         
-        ax.set_xlabel("training tokens")
-        ax.set_ylabel("probability")
+        ax.set_xlabel("# training tokens", fontsize="large")
+        ax.set_ylabel("probability", fontsize="large")
         ax.set_ylim(0, 0.5)
         # ax.set_xticks(np.arange(1, S + 1))
         ax.set_xticks(x_vals)
