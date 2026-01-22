@@ -85,7 +85,7 @@ def token_prefixes(token_str: str):
 
 def add_spaces(tokens):
     # return ["▁" + t for t in tokens] + tokens
-    return ['Ġ' + t for t in tokens] + tokens
+    return ['Ġ' + t for t in tokens] + ["▁" + t for t in tokens] + tokens
 
 def capitalizations(tokens):
     return list(set(tokens))
@@ -214,12 +214,22 @@ def build_dataset_gap(
         else:
             prompt = masked.split(":")[0] + ': \"'
 
+        actual_out_token_str_id = tokenizer.encode(out_token_str, add_special_tokens=False)
+        # list of readable tokens from out_token_id
+        list_out_token_str = [tokenizer.convert_ids_to_tokens(tid) for tid in actual_out_token_str_id]
+
+        # list of readable tokens from latent_token_id
+        list_latent_token_str = [tokenizer.convert_ids_to_tokens(tid) for tid in latent_token_id]
+
         dataset_gap.append(
             {
                 "prompt": prompt_template + prompt,
                 "out_token_id": out_token_id,
+                "actual_out_token_str_id": actual_out_token_str_id,
+                "list_actual_out_token_str": list_out_token_str,
                 "out_token_str": out_token_str,
                 "latent_token_id": latent_token_id,
+                "list_latent_token_str": list_latent_token_str,
                 "latent_token_str": latent_token_str,
             }
         )
