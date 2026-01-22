@@ -164,7 +164,7 @@ def process_tokens(token_str: str, tokenizer, lang: str):
 
     ids = tokenizer.encode(token_str, add_special_tokens=False)
     if ids:
-        final_tokens.append(ids[0])
+        final_tokens.extend(ids)
 
     return list(set(final_tokens))
 
