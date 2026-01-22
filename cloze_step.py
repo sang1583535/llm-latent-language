@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import argparse
 import os
 import json
@@ -88,10 +85,57 @@ def token_prefixes(token_str: str):
 
 def add_spaces(tokens):
     # return ["▁" + t for t in tokens] + tokens
-    return ['Ġ' + t for t in tokens] +  ['▁' + t for t in tokens] + tokens
+    return ['Ġ' + t for t in tokens] + tokens
 
 def capitalizations(tokens):
     return list(set(tokens))
+
+def _gpt2_bytes_to_unicode():
+    """
+    GPT-2/OLMo-2 byte->unicode mapping used by byte-level BPE.
+    Returns dict: int byte (0..255) -> str (single unicode char).
+    """
+    bs = list(range(ord("!"), ord("~") + 1)) \
+       + list(range(ord("¡"), ord("¬") + 1)) \
+       + list(range(ord("®"), ord("ÿ") + 1))
+    cs = bs[:]
+    n = 0
+    for b in range(256):
+        if b not in bs:
+            bs.append(b)
+            cs.append(256 + n)
+            n += 1
+    return {b: chr(c) for b, c in zip(bs, cs)}
+
+_BYTE2UNI = _gpt2_bytes_to_unicode()
+
+def olmo_unicode_prefix_tokid(zh_char="云", tokenizer=None, verbose=True):
+    """
+    OLMo-2 version of "first byte token id":
+    - Take UTF-8 first byte of the character
+    - Map that byte to GPT-2/OLMo-2 byte-unicode symbol
+    - Look up that symbol in the tokenizer vocab
+    """
+    if tokenizer is None:
+        return None
+    try:
+        b = zh_char.encode("utf-8")
+        first = b[0]  # int 0..255
+        key = _BYTE2UNI[first]  # the vocab string for that byte
+        if verbose:
+            print("char:", zh_char)
+            print("utf8 bytes:", [f"0x{x:02X}" for x in b])
+            print("first byte:", f"0x{first:02X}")
+            print("vocab key repr:", repr(key))
+        vocab = tokenizer.get_vocab()
+        tid = vocab.get(key, None)
+        if verbose:
+            print("token_id:", tid)
+        return tid
+    except Exception as e:
+        if verbose:
+            print("error:", repr(e))
+        return None
 
 def unicode_prefix_tokid(zh_char="云", tokenizer=None):
     if tokenizer is None:
@@ -114,13 +158,13 @@ def process_tokens(token_str: str, tokenizer, lang: str):
     final_tokens = [vocab[tok] for tok in with_caps if tok in vocab]
 
     if lang in ["zh", "ru"]:
-        tokid = unicode_prefix_tokid(token_str, tokenizer)
+        tokid = olmo_unicode_prefix_tokid(token_str, tokenizer)
         if tokid is not None:
             final_tokens.append(tokid)
 
-    if len(final_tokens) == 0:
-        ids = tokenizer.encode(token_str, add_special_tokens=False)
-        final_tokens = list(set(ids))
+    ids = tokenizer.encode(token_str, add_special_tokens=False)
+    final_tokens.extend(ids)
+    final_tokens = list(set(final_tokens))
 
     return final_tokens
 
@@ -166,7 +210,7 @@ def build_dataset_gap(
 
         masked = str(row[key])
         if target_lang == "zh":
-            prompt = masked.split("：")[0] + ': \"'
+            prompt = masked.split("：")[0] + '：\"'
         else:
             prompt = masked.split(":")[0] + ': \"'
 
@@ -281,33 +325,6 @@ def main():
     per_layer_tgt_by_step = {layer: [] for layer in layer_list}
     per_layer_argmax_by_step = {layer: [] for layer in layer_list}  # per step -> list[prompt argmax ids]
 
-    # --- DEBUG ---
-    sample_text = "Hello world"
-    inputs = tokenizer(sample_text, return_tensors="pt").to(helper0.model.device)
-    out = helper0.model(**inputs, output_hidden_states=True)
-    print("sample logits shape:", out.logits.shape)
-    print("sample hidden_states count:", len(out.hidden_states))
-
-    # right after loading model:
-    print("Tokenizer vocab size:", len(tokenizer))
-    print("Sample vocab[100:110]:", list(tokenizer.get_vocab().items())[100:110])
-
-    # run a single prompt
-    p = "test"
-    lat = helper0.latents_all_layers(p)
-    print("lat shape", lat.shape)
-    log = helper0.unemb(lat)
-    last = log[:, -1, :].float()
-    print("raw logits min/max", last.min().item(), last.max().item())
-
-    latent_ids = tokenizer.encode("the", add_special_tokens=False)
-    print("example latent ids/tokens", latent_ids,
-        tokenizer.convert_ids_to_tokens(latent_ids))
-
-    ss = last[:, latent_ids].sum(dim=-1)
-    print("sum prob for 'the'", ss.tolist())
-    # -------------
-
     # Loop checkpoints
     for ckpt, step in zip(ckpts, steps):
         print(f"\n=== Step {step}: {ckpt} ===")
@@ -321,35 +338,13 @@ def main():
 
         for d in tqdm(dataset_gap, desc=f"Running step={step}"):
             latents = olmo.latents_all_layers(d["prompt"])   # [L,T,H]
-            # --- DEBUG ---
-            print(f"latents shape: {latents.shape}")
-            # -------------
             logits = unemb(latents)                          # [L,T,V]
-
-            # --- DEBUG ---
-            raw = logits[:, -1, :]
-            print("  logits min/max overall:", raw.min().item(), raw.max().item())
-            # -------------
 
             last = logits[:, -1, :].float().softmax(dim=-1)  # [L,V]
             argmax_all = last.argmax(dim=-1)
 
-            # ---DEBUG---
-            with torch.no_grad():
-                # entropy per layer
-                ent = (- last * last.log()).sum(dim=-1)       # [L]
-                maxp = last.max(dim=-1).values                # [L]
-            print(f"  ENTROPY   layer sample: {ent.tolist()[:5]} ...")
-            print(f"  MAX-PROB  layer sample: {maxp.tolist()[:5]} ...")
-            # -----------
-
             latent_ids = torch.tensor(d["latent_token_id"], dtype=torch.long, device=last.device)
             out_ids = torch.tensor(d["out_token_id"], dtype=torch.long, device=last.device)
-
-            # ---DEBUG---
-            print("  latent token ids/tokens:", decode_token_ids(tokenizer, d['latent_token_id']))
-            print("  out token ids/tokens:   ", decode_token_ids(tokenizer, d['out_token_id']))
-            # -----------
 
             p_en_all = last[:, latent_ids].sum(dim=-1)   # [L]
             p_tg_all = last[:, out_ids].sum(dim=-1)      # [L]
