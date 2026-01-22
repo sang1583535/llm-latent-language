@@ -163,10 +163,10 @@ def process_tokens(token_str: str, tokenizer, lang: str):
             final_tokens.append(tokid)
 
     ids = tokenizer.encode(token_str, add_special_tokens=False)
-    final_tokens.extend(ids)
-    final_tokens = list(set(final_tokens))
+    if ids:
+        final_tokens.append(ids[0])
 
-    return final_tokens
+    return list(set(final_tokens))
 
 
 # -----------------------------
@@ -218,8 +218,8 @@ def build_dataset_gap(
             {
                 "prompt": prompt_template + prompt,
                 "out_token_id": out_token_id,
-                "latent_token_id": latent_token_id,
                 "out_token_str": out_token_str,
+                "latent_token_id": latent_token_id,
                 "latent_token_str": latent_token_str,
             }
         )
