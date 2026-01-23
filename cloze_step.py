@@ -164,7 +164,7 @@ def process_tokens(token_str: str, tokenizer, lang: str):
 
     ids = tokenizer.encode(token_str, add_special_tokens=False)
     if ids:
-        final_tokens.extend(ids)
+        final_tokens.append(ids[0])
 
     return list(set(final_tokens))
 
@@ -210,7 +210,7 @@ def build_dataset_gap(
 
         masked = str(row[key])
         if target_lang == "zh":
-            prompt = masked.split("：")[0] + '：\"'
+            prompt = masked.split("：")[0] + ': \"'
         else:
             prompt = masked.split(":")[0] + ': \"'
 
@@ -431,7 +431,7 @@ def main():
         
         ax.set_xlabel("# training tokens", fontsize="large")
         ax.set_ylabel("probability", fontsize="large")
-        ax.set_ylim(0, 0.5)
+        ax.set_ylim(0, 0.6)
         # ax.set_xticks(np.arange(1, S + 1))
         ax.set_xticks(x_vals)
         ax.set_xticklabels(steps, rotation=30, ha="right")
