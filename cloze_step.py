@@ -1,6 +1,7 @@
 import argparse
 import os
 import json
+import sys
 from typing import Optional, List, Dict, Any
 
 import numpy as np
@@ -95,17 +96,17 @@ def _gpt2_bytes_to_unicode():
     GPT-2/OLMo-2 byte->unicode mapping used by byte-level BPE.
     Returns dict: int byte (0..255) -> str (single unicode char).
     """
-    bs = list(range(ord("!"), ord("~") + 1)) \
-       + list(range(ord("¡"), ord("¬") + 1)) \
-       + list(range(ord("®"), ord("ÿ") + 1))
+    _chr = unichr if sys.version_info[0] == 2 else chr
+    bs = list(range(ord("!"), ord("~")+1))+list(range(ord("¡"), ord("¬")+1))+list(range(ord("®"), ord("ÿ")+1))
     cs = bs[:]
     n = 0
-    for b in range(256):
+    for b in range(2**8):
         if b not in bs:
             bs.append(b)
-            cs.append(256 + n)
+            cs.append(2**8+n)
             n += 1
-    return {b: chr(c) for b, c in zip(bs, cs)}
+    cs = [_chr(n) for n in cs]
+    return dict(zip(bs, cs))
 
 _BYTE2UNI = _gpt2_bytes_to_unicode()
 
@@ -431,7 +432,7 @@ def main():
         
         ax.set_xlabel("# training tokens", fontsize="large")
         ax.set_ylabel("probability", fontsize="large")
-        ax.set_ylim(0, 0.6)
+        ax.set_ylim(0, 0.5)
         # ax.set_xticks(np.arange(1, S + 1))
         ax.set_xticks(x_vals)
         ax.set_xticklabels(steps, rotation=30, ha="right")
