@@ -1,0 +1,92 @@
+lang,word_original,word_translation,blank_prompt_original,blank_prompt_translation,blank_prompt_translation_masked,token_id
+zh,book,书,"A ""book"" is used to read stories. Answer: ""book"".","""书""用来阅读故事。答案：""书""。","""_""用来阅读故事。答案：""书""。",91386
+zh,bag,包,"A ""bag"" is used to carry items. Answer: ""bag"".","""包""用来携带物品。答案：""包""。","""_""用来携带物品。答案：""包""。",68379
+zh,mouth,口,"A ""mouth"" is used to eat food and speak. Answer: ""mouth"".","""口""用来吃食物和说话。答案：""口""。","""_""用来吃食物和说话。答案：""口""。",40526
+zh,soil,土,"""A ""soil"" is used for planting trees and crops. Answer: ""soil"".""","""土""用于种植树木和作物。答案：""土""。","""_""用于种植树木和作物。答案：""土""。",74090
+zh,mountain,山,"A ""mountain"" is a large natural elevation of the earth's surface. Answer: ""mountain"".","""山""是地球表面的大自然升高地。答案：""山""。","""_""是地球表面的大自然升高地。答案：""山""。",58911
+zh,cloth,布,"A ""cloth"" is used to clean surfaces or cover bodies. Answer: ""cloth"".","""布""用来清洁表面或覆盖身体。答案：""布""。","""_""用来清洁表面或覆盖身体。答案：""布""。",52927
+zh,heart,心,"A ""heart"" is an organ that pumps blood throughout the body. Answer: ""heart"".","""心""是一个泵血贯穿全身的器官。答案：""心""。","""_""是一个泵血贯穿全身的器官。答案：""心""。",64209
+zh,hand,手,"A ""hand"" is used to grasp or hold objects. Answer: ""hand"".","""手""用来抓取或持有物体。答案：""手""。","""_""用来抓取或持有物体。答案：""手""。",46034
+zh,day,日,"A ""day"" is a period of 24 hours, often understood as the time it takes for the Earth to complete one rotation. Answer: ""day"".","""日""是24小时的时期，通常理解为地球完成一次自转所需的时间。答案：""日""。","""_""是24小时的时期，通常理解为地球完成一次自转所需的时间。答案：""日""。",9080
+zh,star,星,"A ""star"" is a celestial body that shines in the night sky. Answer: ""star"".","""星""是夜空中发光的天体。答案：""星""。","""_""是夜空中发光的天体。答案：""星""。",78519
+zh,moon,月,"A ""moon"" is a natural satellite that orbits around a planet. Answer: ""moon"".","""月""是绕着行星运转的自然卫星。答案：""月""。","""_""是绕着行星运转的自然卫星。答案：""月""。",9953
+zh,wood,木,"A ""wood"" is used to make furniture. Answer: ""wood"".","""木""用来制作家具。答案：""木""。","""_""用来制作家具。答案：""木""。",76505
+zh,fruit,果,"'A ""fruit"" is a type of food that is often sweet and comes from a plant. Answer: ""fruit"".'","""果""是一种通常甜的并且来自植物的食物类型。答案：""果""。","""_""是一种通常甜的并且来自植物的食物类型。答案：""果""。",28873
+zh,grid,格,"A ""grid"" is a network of lines that cross each other to form a series of squares or rectangles. Answer: ""grid"".","""格""是一个线条相互交叉形成一系列方形或长方形的网络。答案：""格""。","""_""是一个线条相互交叉形成一系列方形或长方形的网络。答案：""格""。",35083
+zh,water,水,"""A ""water"" is essential for life and is used for drinking and cleaning. Answer: ""water"".""","""水""对生命至关重要，用于饮用和清洁。答案：""水""。","""_""对生命至关重要，用于饮用和清洁。答案：""水""。",53610
+zh,law,法,"'A ""law"" is a system of rules that a society or government develops in order to deal with crime, business agreements, and social relationships. Answer: ""law"".'","""法""是一个社会或政府为了处理犯罪、商业协议和社会关系而发展的规则系统。答案：""法""。","""_""是一个社会或政府为了处理犯罪、商业协议和社会关系而发展的规则系统。答案：""法""。",25333
+zh,sea,海,"A ""sea"" is a large body of saltwater that is smaller than an ocean. Answer: ""sea"".","""海""是比洋小的大片盐水。答案：""海""。","""_""是比洋小的大片盐水。答案：""海""。",56235
+zh,source,源,"A ""source"" is used to provide information or data. Answer: ""source"".","""源""用来提供信息或数据。答案：""源""。","""_""用来提供信息或数据。答案：""源""。",39084
+zh,fire,火,"A ""fire"" is used for cooking and providing warmth. Answer: ""fire"".","""火""用于烹饪和提供温暖。答案：""火""。","""_""用于烹饪和提供温暖。答案：""火""。",80699
+zh,point,点,"A ""point"" is a specific location in space. Answer: ""point"".","""点""是空间中的一个特定位置。答案：""点""。","""_""是空间中的一个特定位置。答案：""点""。",28542
+zh,version,版,"A ""version"" is used to denote different forms or stages in the development of something. Answer: ""version"".","""版""用来表示某物发展中的不同形态或阶段。答案：""版""。","""_""用来表示某物发展中的不同形态或阶段。答案：""版""。",41401
+zh,ball,球,"A ""ball"" is used to play sports like soccer and basketball. Answer: ""ball"".","""球""用来进行足球和篮球等运动。答案：""球""。","""_""用来进行足球和篮球等运动。答案：""球""。",79059
+zh,painting,画,"A ""painting"" is a piece of art that can be hung on a wall. Answer: ""painting"".","""画""是可以挂在墙上的艺术作品。答案：""画""。","""_""是可以挂在墙上的艺术作品。答案：""画""。",55723
+zh,station,站,"A ""station"" is a place where trains or buses regularly stop so that passengers can get on or off. Answer: ""station"".","""站""是火车或公共汽车定期停靠以便乘客上下车的地方。答案：""站""。","""_""是火车或公共汽车定期停靠以便乘客上下车的地方。答案：""站""。",71890
+zh,rice,米,"A ""rice"" is a grain that is commonly used in cooking and is a staple food in many countries. Answer: ""rice"".","""米""是常用于烹饪并在许多国家是主食的谷物。答案：""米""。","""_""是常用于烹饪并在许多国家是主食的谷物。答案：""米""。",73361
+zh,line,线,"A ""line"" is a narrow continuous mark, as that made by a pen, pencil, or brush. Answer: ""line"".","""线""是由笔、铅笔或画笔等制成的狭长连续标记。答案：""线""。","""_""是由笔、铅笔或画笔等制成的狭长连续标记。答案：""线""。",44368
+zh,net,网,"A ""net"" is used in sports like volleyball and tennis to divide the playing area. Answer: ""net"".","""网""在排球和网球等运动中用来划分比赛区域。答案：""网""。","""_""在排球和网球等运动中用来划分比赛区域。答案：""网""。",32239
+zh,gold,金,"""A ""gold"" is a precious metal that is often used in jewelry. Answer: ""gold"".""","""金""是常用于珠宝的贵金属。答案：""金""。","""_""是常用于珠宝的贵金属。答案：""金""。",35330
+zh,door,门,"A ""door"" is used for entering or exiting a room. Answer: ""door"".","""门""用于进入或离开房间。答案：""门""。","""_""用于进入或离开房间。答案：""门""。",65789
+zh,one,一,"A ""one"" is a number that comes after zero and before two. Answer: ""one"".","""一""是在零之后、二之前的数字。答案：""一""。","""_""是在零之后、二之前的数字。答案：""一""。",15120
+zh,two,二,"The number ""two"" is the sum of one plus one. Answer: ""two"".","""二""是一加一的和。答案：""二""。","""_""是一加一的和。答案：""二""。",41920
+zh,three,三,"The number that comes after two is ""three"". Answer: ""three"".","""三""是在二之后的数字。答案：""三""。","""_""是在二之后的数字。答案：""三""。",46091
+zh,four,四,"The number ""four"" is the integer that comes after three. Answer: ""four"".","""四""是在三之后的整数。答案：""四""。","""_""是在三之后的整数。答案：""四""。",64803
+zh,five,五,"The number that comes after four is ""five"". Answer: ""five"".","""五""是在四之后的数字。答案：""五""。","""_""是在四之后的数字。答案：""五""。",76208
+zh,ten,十,"The number that comes after nine is ""ten"". Answer: ""ten"".","""十""是在九之后的数字。答案：""十""。","""_""是在九之后的数字。答案：""十""。",95598
+zh,head,头,"'A ""head"" is a part of the body that contains the brain, eyes, ears, nose, and mouth. Answer: ""head"".'","""头""是身体的一部分，包含大脑、眼睛、耳朵、鼻子和嘴巴。答案：""头""。","""_""是身体的一部分，包含大脑、眼睛、耳朵、鼻子和嘴巴。答案：""头""。",65455
+zh,shop,店,"A ""shop"" is a place where you can buy goods or services. Answer: ""shop"".","""店""是你可以购买商品或服务的地方。答案：""店""。","""_""是你可以购买商品或服务的地方。答案：""店""。",72516
+zh,strip,条,"A ""strip"" is a long, narrow piece of a certain material. Answer: ""strip"".","""条""是某种材料的长而窄的一片。答案：""条""。","""_""是某种材料的长而窄的一片。答案：""条""。",40089
+zh,part,部,"A ""part"" is used to make up a whole. Answer: ""part"".","""部""用来构成一个整体。答案：""部""。","""_""用来构成一个整体。答案：""部""。",34048
+zh,eye,目,"A ""eye"" is used to see everything around us. Answer: ""eye"".","""目""用来看我们周围的一切。答案：""目""。","""_""用来看我们周围的一切。答案：""目""。",30832
+zh,field,场,"A ""field"" is a wide area of open land where crops are grown. Answer: ""field"".","""场""是开阔土地的广阔区域，用来种植作物。答案：""场""。","""_""是开阔土地的广阔区域，用来种植作物。答案：""场""。",83324
+zh,site,址,"A ""site"" is a location where something is, was, or will be built. Answer: ""site"".","""址""是某事物是、曾是或将要建立的位置。答案：""址""。","""_""是某事物是、曾是或将要建立的位置。答案：""址""。",41723
+zh,meaning,意,"""A ""dictionary"" is used to find the meaning of words. Answer: ""dictionary"".""","""意""用来找出词语的意义。答案：""意""。","""_""用来找出词语的意义。答案：""意""。",37689
+zh,word,字,"A ""word"" is a single distinct meaningful element of speech or writing, used with others (or sometimes alone) to form a sentence and typically shown with a space on either side when written or printed. Answer: ""word"".","""字""是语言中单独的、有意义的元素，与其他字一起（或有时单独）用来构成句子，当书写或打印时，通常在两边显示为空格。答案：""字""。","""_""是语言中单独的、有意义的元素，与其他字一起（或有时单独）用来构成句子，当书写或打印时，通常在两边显示为空格。答案：""字""。",19113
+zh,north,北,"""The ""north"" is a cardinal direction often associated with cold and polar regions. Answer: ""north"".""","""北""是一个经常与寒冷和极地地区相关的基本方向。答案：""北""。","""_""是一个经常与寒冷和极地地区相关的基本方向。答案：""北""。",49409
+zh,machine,机,"A ""machine"" is used to perform a specific task or produce something. Answer: ""machine"".","""机""用来执行特定任务或生产某物。答案：""机""。","""_""用来执行特定任务或生产某物。答案：""机""。",33748
+zh,time,时,"""A ""clock"" is used to measure ""time"". Answer: ""time"".""","""时""用来测量时间。答案：""时""。","""_""用来测量时间。答案：""时""。",13646
+zh,benefit,利,"A ""benefit"" is something that promotes or enhances well-being. Answer: ""benefit"".","""利""是促进或增强福祉的东西。答案：""利""。","""_""是促进或增强福祉的东西。答案：""利""。",60632
+zh,position,位,"A ""position"" is a place where someone or something is located or has been put. Answer: ""position"".","""位""是某人或某物位于或被放置的地方。答案：""位""。","""_""是某人或某物位于或被放置的地方。答案：""位""。",25129
+zh,province,省,"A ""province"" is a principal administrative division of certain countries or empires. Answer: ""province"".","""省""是某些国家或帝国的主要行政划分。答案：""省""。","""_""是某些国家或帝国的主要行政划分。答案：""省""。",66870
+zh,exchange,交,"An ""exchange"" is a place where stocks, bonds, or other securities are bought and sold. Answer: ""exchange"".","""交""是股票、债券或其他证券被买卖的地方。答案：""交""。","""_""是股票、债券或其他证券被买卖的地方。答案：""交""。",39209
+zh,middle,中,"""The ""middle"" is the point that is equally distant from the sides or outer boundaries of something. Answer: ""middle"".""","""中""是距离某物的边缘或外界等距离的点。答案：""中""。","""_""是距离某物的边缘或外界等距离的点。答案：""中""。",16325
+zh,friend,友,"A ""friend"" is someone you share a close personal relationship with. Answer: ""friend"".","""友""是你与之共享亲密个人关系的人。答案：""友""。","""_""是你与之共享亲密个人关系的人。答案：""友""。",98915
+zh,color,色,"""A ""color"" is used to identify or describe the appearance of objects. Answer: ""color"".""","""色""用来识别或描述物体的外观。答案：""色""。","""_""用来识别或描述物体的外观。答案：""色""。",39135
+zh,kind,种,"""A ""kind"" is a category or type of something. Answer: ""kind"".""","""种""是某物的类别或类型。答案：""种""。","""_""是某物的类别或类型。答案：""种""。",87502
+zh,structure,构,"A ""structure"" is a construction that has a specific purpose or function. Answer: ""structure"".","""构""是具有特定目的或功能的建筑物。答案：""构""。","""_""是具有特定目的或功能的建筑物。答案：""构""。",78935
+zh,tie,结,"A ""tie"" is worn around the neck as part of formal attire. Answer: ""tie"".","""结""是作为正式服装的一部分围绕脖子的。答案：""结""。","""_""是作为正式服装的一部分围绕脖子的。答案：""结""。",37985
+zh,example,例,"An ""example"" is used to illustrate a point or concept. Answer: ""example"".","""例""用来阐释一个观点或概念。答案：""例""。","""_""用来阐释一个观点或概念。答案：""例""。",27452
+zh,face,面,"A ""face"" is the front part of a person's head, including the forehead, eyes, nose, and mouth. Answer: ""face"".","""面""是人的头的前部，包括额头、眼睛、鼻子和嘴巴。答案：""面""。","""_""是人的头的前部，包括额头、眼睛、鼻子和嘴巴。答案：""面""。",28190
+zh,item,项,"An ""item"" is a thing that is unspecified or unidentified. Answer: ""item"".","""项""是未指定或未识别的事物。答案：""项""。","""_""是未指定或未识别的事物。答案：""项""。",48982
+zh,beauty,美,"'""Beauty"" is a characteristic that provides a perceptual experience of pleasure or satisfaction. Answer: ""beauty"".'","""美""是提供愉悦或满足感知体验的特征。答案：""美""。","""_""是提供愉悦或满足感知体验的特征。答案：""美""。",58666
+zh,platform,台,"A ""platform"" is used to support or raise something. Answer: ""platform"".","""台""用来支持或抬高某物。答案：""台""。","""_""用来支持或抬高某物。答案：""台""。",55038
+zh,sun,阳,"The ""sun"" is a star at the center of the Solar System that provides light and heat to Earth. Answer: ""sun"".","""阳""是太阳系中心的一颗恒星，为地球提供光和热。答案：""阳""。","""_""是太阳系中心的一颗恒星，为地球提供光和热。答案：""阳""。",83175
+zh,meeting,会,"A ""meeting"" is a gathering of people for a specific purpose, often for discussion or decision-making. Answer: ""meeting"".","""会""是为特定目的聚集的人，通常用于讨论或决策。答案：""会""。","""_""是为特定目的聚集的人，通常用于讨论或决策。答案：""会""。",38093
+zh,square,方,"A ""square"" is a shape with four equal sides and four right angles. Answer: ""square"".","""方""是四边相等且四个角都是直角的形状。答案：""方""。","""_""是四边相等且四个角都是直角的形状。答案：""方""。",24273
+zh,generation,代,"""A ""generation"" is a term used to describe all of the people born and living at about the same time. Answer: ""generation"".""","""代""用来描述大约同时代出生和生活的所有人。答案：""代""。","""_""用来描述大约同时代出生和生活的所有人。答案：""代""。",31640
+zh,south,南,"""The ""south"" is a cardinal direction opposite to north. Answer: ""south"".""","""南""是指向北的基本方向的相反方向。答案：""南""。","""_""是指向北的基本方向的相反方向。答案：""南""。",59563
+zh,tribe,族,"A ""tribe"" is a social division in a traditional society consisting of families or communities linked by social, economic, religious, or blood ties. Answer: ""tribe"".","""族""是传统社会中由家庭或社区通过社会、经济、宗教或血缘关系链接的社会分支。答案：""族""。","""_""是传统社会中由家庭或社区通过社会、经济、宗教或血缘关系链接的社会分支。答案：""族""。",71869
+zh,city,城,"A ""city"" is a large human settlement where people live and work. Answer: ""city"".","""城""是人们居住和工作的大型人类聚居地。答案：""城""。","""_""是人们居住和工作的大型人类聚居地。答案：""城""。",60174
+zh,language,语,"A ""language"" is used to communicate thoughts and ideas. Answer: ""language"".","""语""用来交流思想和观点。答案：""语""。","""_""用来交流思想和观点。答案：""语""。",73981
+zh,speed,速,"""A ""speed"" is used to measure how fast something is moving. Answer: ""speed"".""","""速""用来测量某物移动的快慢。答案：""速""。","""_""用来测量某物移动的快慢。答案：""速""。",95399
+zh,ground,地,"""A ""ground"" is where we walk and build houses on. Answer: ""ground"".""","""地""是我们行走和建造房屋的地方。答案：""地""。","""_""是我们行走和建造房屋的地方。答案：""地""。",30590
+zh,advance,进,"""Advance"" is a term used to describe moving forward or making progress. Answer: ""advance"".","""进""是用来描述向前移动或取得进展的术语。答案：""进""。","""_""是用来描述向前移动或取得进展的术语。答案：""进""。",42399
+zh,attempt,试,"An ""attempt"" is made when trying to achieve something. Answer: ""attempt"".","""试""是尝试达成某事的行为。答案：""试""。","""_""是尝试达成某事的行为。答案：""试""。",42421
+zh,defeat,败,"""A ""defeat"" is experienced when one loses a competition or battle. Answer: ""defeat"".""","""败""是在竞赛或战斗中输掉时的体验。答案：""败""。","""_""是在竞赛或战斗中输掉时的体验。答案：""败""。",21809
+zh,east,东,"""The ""east"" is a cardinal direction opposite of west. Answer: ""east"".""","""东""是西的相反基本方向。答案：""东""。","""_""是西的相反基本方向。答案：""东""。",68464
+zh,return,回,"A ""return"" is used to give back a purchased item. Answer: ""return"".","""回""用来归还购买的物品。答案：""回""。","""_""用来归还购买的物品。答案：""回""。",18904
+zh,speech,话,"""A ""speech"" is a formal address or discourse delivered to an audience. Answer: ""speech"".""","""话""是对听众发表的正式讲话或演说。答案：""话""。","""_""是对听众发表的正式讲话或演说。答案：""话""。",58543
+zh,child,子,"'A ""child"" is a young human being below the age of puberty. Answer: ""child"".'","""子""是未到青春期的年轻人类。答案：""子""。","""_""是未到青春期的年轻人类。答案：""子""。",45829
+zh,hair,发,"A ""hair"" is found on the heads of humans and animals. Answer: ""hair"".","""发""位于人类和动物头上。答案：""发""。","""_""位于人类和动物头上。答案：""发""。",29391
+zh,flat,平,"A ""book"" is often flat and used for reading. Answer: ""book"".","""平""是通常用于阅读的平面物体。答案：""平""。","""_""是通常用于阅读的平面物体。答案：""平""。",50211
+zh,male,男,"'A ""man"" is an example of a male. Answer: ""man"".'","""男""是男性的一个例子。答案：""男""。","""_""是男性的一个例子。答案：""男""。",71208
+zh,electric,电,"An ""electricity"" is used to power devices. Answer: ""electricity"".","""电""用来为设备供电。答案：""电""。","""_""用来为设备供电。答案：""电""。",39312
+zh,household,户,"A ""household"" is a term used to describe a residential unit where people live. Answer: ""household"".","""户""是用来描述人们居住的住宅单元的术语。答案：""户""。","""_""是用来描述人们居住的住宅单元的术语。答案：""户""。",17982
+zh,person,人,"'A ""person"" is a human being regarded as an individual. Answer: ""person"".'","""人""是被视为个体的人类。答案：""人""。","""_""是被视为个体的人类。答案：""人""。",17792
+zh,section,段,"A ""section"" is a distinct part or subdivision of something. Answer: ""section"".","""段""是某物的明显部分或子分区。答案：""段""。","""_""是某物的明显部分或子分区。答案：""段""。",38574
+zh,office,局,"An ""office"" is a place where people usually do their job. Answer: ""office"".","""局""是人们通常进行工作的地方。答案：""局""。","""_""是人们通常进行工作的地方。答案：""局""。",91077
+zh,rise,起,"""A ""rise"" is used to describe an increase or upward movement. Answer: ""rise"".""","""起""用来描述增加或向上移动。答案：""起""。","""_""用来描述增加或向上移动。答案：""起""。",72718
+zh,left,左,"'A ""left"" is a direction opposite to right. Answer: ""left"".'","""左""是右的相反方向。答案：""左""。","""_""是右的相反方向。答案：""左""。",78659
+zh,sound,音,"A ""sound"" is something we hear. Answer: ""sound"".","""音""是我们听到的东西。答案：""音""。","""_""是我们听到的东西。答案：""音""。",79785
+zh,power,力,"""A ""power"" is used to control or influence people or things. Answer: ""power"".""","""力""用来控制或影响人或物。答案：""力""。","""_""用来控制或影响人或物。答案：""力""。",48634
