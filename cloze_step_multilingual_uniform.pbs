@@ -35,7 +35,7 @@ nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nouni
 python cloze_step.py \
   --target_lang zh \
   --data_prefix /scratch/e1583535/llm-latent-language/data/langs \
-  --out_dir /scratch/e1583535/llm-latent-language/visuals/results_05012026/multilingual-uniform-7B \
+  --out_dir /scratch/e1583535/llm-latent-language/visuals/results_260126_SingleToken_PromptAsciiColon_Olmo2UnicodeApdapter/multilingual-uniform-7B \
   --checkpoints "
   /scratch/e1583535/llm/nus-olmo/multilingual-uniform-7B_n34.8-26_replay-8.7-checkpoints/step954-unsharded-hf, \
   /scratch/e1583535/llm/nus-olmo/multilingual-uniform-7B_n34.8-26_replay-8.7-checkpoints/step2385-unsharded-hf-multilingual-uniform-10B, \
