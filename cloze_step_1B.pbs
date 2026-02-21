@@ -1,0 +1,59 @@
+#!/bin/bash
+#PBS -P CFP01-CF-060
+#PBS -j oe
+#PBS -k oed
+#PBS -N llm-latent-cloze-step
+#PBS -M e1583535@u.nus.edu
+#PBS -q auto
+#PBS -m abe
+#PBS -l select=1:ngpus=2
+#PBS -l walltime=96:00:00
+
+cd $PBS_O_WORKDIR;
+
+image="/app1/common/singularity-img/hopper/pytorch/pytorch_2.3.0_cuda_12.4_ngc_24.04.sif"
+
+module load singularity
+
+LOG_DIR=./logs/para-only-1B
+mkdir -p $LOG_DIR
+
+singularity exec -e \
+--env HF_HOME=/scratch/e1583535/cache \
+--env HF_DATASETS_CACHE=/scratch/e1583535/cache/datasets \
+$image bash << EOF > $LOG_DIR/stdout.$PBS_JOBID.log 2> $LOG_DIR/stderr.$PBS_JOBID.log
+
+python -c "import gc, torch; torch.cuda.empty_cache(); gc.collect()"
+
+source /hpctmp/e1583535/virtualenvs/lm-latent/bin/activate
+
+echo "Starting training at $(date)"
+echo "Running on host: $(hostname)"
+echo "GPU info:"
+nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nounits || echo "No GPU detected"
+
+python cloze_step.py \
+  --target_lang zh \
+  --data_prefix /scratch/e1583535/llm-latent-language/data/langs \
+  --out_dir /scratch/e1583535/llm-latent-language/visuals/results_260217/para-only-1B \
+  --checkpoints "
+  /scratch/e1583535/llm/openseal/parallel-only-10B-checkpoints/step477-unsharded-hf, \
+  /scratch/e1583535/llm/openseal/parallel-only-10B-checkpoints/step954-unsharded-hf, \
+  /scratch/e1583535/llm/openseal/parallel-only-10B-checkpoints/step1431-unsharded-hf, \
+  /scratch/e1583535/llm/openseal/parallel-only-10B-checkpoints/step1908-unsharded-hf, \
+  /scratch/e1583535/llm/openseal/parallel-only-10B-checkpoints/step2385-unsharded-hf, \
+  /scratch/e1583535/llm/openseal/parallel-only-10B-checkpoints/step2862-unsharded-hf, \
+  /scratch/e1583535/llm/openseal/parallel-only-10B-checkpoints/step3339-unsharded-hf, \
+  /scratch/e1583535/llm/openseal/parallel-only-10B-checkpoints/step3816-unsharded-hf, \
+  /scratch/e1583535/llm/openseal/parallel-only-10B-checkpoints/step4293-unsharded-hf, \
+  /scratch/e1583535/llm/openseal/parallel-only-10B-checkpoints/step4320-unsharded-hf \
+  " \
+  --steps 1B,2B,3B,4B,5B,6B,7B,8B,9B,10B \
+  --layers 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 \
+  --img_ext png \
+  --no_load_in_8bit
+
+# you can put more commands here
+echo "Done"
+
+EOF
